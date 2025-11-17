@@ -4,11 +4,10 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from typing import List, Sequence
 
-from rapidfuzz import fuzz, process
-
 from ..data.models import MapRecord
 from ..data.repository import MapRepository
 from ..logger import get_logger
+from .fuzzy_match import subsequence_match
 
 logger = get_logger(__name__)
 
@@ -18,48 +17,20 @@ class SearchResult:
     record: MapRecord
     score: float
     method: str
-
-
-class RapidFuzzIndex:
-    def __init__(self) -> None:
-        self._records: Sequence[MapRecord] = ()
-        self._slugs: List[str] = []
-
-    def build(self, records: Sequence[MapRecord]) -> None:
-        self._records = tuple(records)
-        self._slugs = [rec.slug for rec in self._records]
-
-    def query(self, query: str, limit: int, cutoff: int) -> List[SearchResult]:
-        if not self._records:
-            return []
-        matches = process.extract(
-            query,
-            self._slugs,
-            scorer=fuzz.WRatio,
-            limit=limit,
-            score_cutoff=cutoff,
-        )
-        results: List[SearchResult] = []
-        for _slug, score, idx in matches:
-            record = self._records[idx]
-            results.append(SearchResult(record=record, score=float(score), method="rapidfuzz"))
-        return results
+    positions: List[int] | None = None
 
 
 class MapSearchService:
     def __init__(self, repository: MapRepository):
         self.repository = repository
         self._records: Sequence[MapRecord] = ()
-        self._index = RapidFuzzIndex()
         self._cache: OrderedDict[str, List[SearchResult]] = OrderedDict()
         self.max_results = 25
         self.min_chars = 2
-        self.score_cutoff = 55
 
     def refresh(self) -> None:
         self.repository.ensure_loaded()
         self._records = self.repository.all()
-        self._index.build(self._records)
         self._cache.clear()
         logger.info("搜索索引构建完成，共 %s 条", len(self._records))
 
@@ -81,7 +52,22 @@ class MapSearchService:
         return results
 
     def _fuzzy_match(self, query: str) -> List[SearchResult]:
-        return self._index.query(query, limit=self.max_results, cutoff=self.score_cutoff)
+        matches: List[SearchResult] = []
+        for record in self._records:
+            detail = subsequence_match(query, record.name)
+            if not detail:
+                continue
+            matches.append(
+                SearchResult(
+                    record=record,
+                    score=detail.score,
+                    method="subsequence",
+                    positions=detail.positions,
+                )
+            )
+
+        matches.sort(key=lambda r: (-r.score, r.record.tier, r.record.slug))
+        return matches[: self.max_results]
 
     def _fallback_match(self, query: str) -> List[SearchResult]:
         candidates: List[SearchResult] = []
