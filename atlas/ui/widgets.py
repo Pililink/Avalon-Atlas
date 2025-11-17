@@ -8,19 +8,6 @@ from ..data.models import MapRecord
 from .resource_loader import ResourceLoader
 
 
-def format_resources(record: MapRecord) -> str:
-    res = record.resources
-    labels = [
-        ("石", res.rock),
-        ("木", res.wood),
-        ("矿", res.ore),
-        ("棉", res.fiber),
-        ("皮", res.hide),
-    ]
-    parts = [f"{label}:{value}" for label, value in labels if value > 0]
-    return " ".join(parts) if parts else "资源信息暂无"
-
-
 class MapListItemWidget(QtWidgets.QWidget):
     hovered = QtCore.Signal(MapRecord)
     unhovered = QtCore.Signal()
@@ -29,26 +16,33 @@ class MapListItemWidget(QtWidgets.QWidget):
         super().__init__(parent)
         self.record = record
         layout = QtWidgets.QHBoxLayout(self)
-        layout.setContentsMargins(6, 6, 6, 6)
-        layout.setSpacing(10)
+        layout.setContentsMargins(12, 6, 6, 6)
+        layout.setSpacing(6)
 
         self.thumbnail_label = QtWidgets.QLabel()
-        self.thumbnail_label.setFixedSize(120, 68)
-        pixmap = loader.map_thumbnail(record.slug, size=(120, 68))
+        self.thumbnail_label.setFixedSize(96, 54)
+        self.thumbnail_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        pixmap = loader.map_thumbnail(record.slug, size=(96, 54))
         self.thumbnail_label.setPixmap(pixmap)
 
         text_layout = QtWidgets.QVBoxLayout()
+        text_layout.setContentsMargins(0, 0, 0, 0)
+        text_layout.setSpacing(4)
+        title_row = QtWidgets.QHBoxLayout()
         title = QtWidgets.QLabel(f"{record.name} ({record.tier})")
         font = title.font()
         font.setBold(True)
         title.setFont(font)
         map_type_label = QtWidgets.QLabel(record.map_type.replace("_", " "))
-        map_type_label.setStyleSheet("color: #666;")
+        map_type_label.setStyleSheet("color: #666; margin-left: 8px;")
+        title_row.addWidget(title)
+        title_row.addStretch(1)
+        title_row.addWidget(map_type_label, 0, QtCore.Qt.AlignmentFlag.AlignRight)
 
-        info = QtWidgets.QLabel(format_resources(record))
-        info.setStyleSheet("color: #888;")
-
-        resource_row = QtWidgets.QHBoxLayout()
+        resource_grid = QtWidgets.QGridLayout()
+        resource_grid.setHorizontalSpacing(6)
+        resource_grid.setVerticalSpacing(4)
+        resource_grid.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeft)
         resource_map = [
             ("rock", record.resources.rock),
             ("wood", record.resources.wood),
@@ -56,7 +50,7 @@ class MapListItemWidget(QtWidgets.QWidget):
             ("fiber", record.resources.fiber),
             ("hide", record.resources.hide),
         ]
-        resource_added = False
+        resource_idx = 0
         for key, value in resource_map:
             if value <= 0:
                 continue
@@ -65,13 +59,16 @@ class MapListItemWidget(QtWidgets.QWidget):
             lbl.setPixmap(icon.scaled(20, 20, QtCore.Qt.AspectRatioMode.KeepAspectRatio))
             lbl.setToolTip(f"{key}: {value}")
             count_label = QtWidgets.QLabel(str(value))
-            resource_row.addWidget(lbl)
-            resource_row.addWidget(count_label)
-            resource_added = True
-        if resource_added:
-            resource_row.addStretch(1)
+            row = resource_idx // 4
+            col = (resource_idx % 4) * 2
+            resource_grid.addWidget(lbl, row, col)
+            resource_grid.addWidget(count_label, row, col + 1)
+            resource_idx += 1
 
-        chest_row = QtWidgets.QHBoxLayout()
+        chest_grid = QtWidgets.QGridLayout()
+        chest_grid.setHorizontalSpacing(6)
+        chest_grid.setVerticalSpacing(4)
+        chest_grid.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeft)
         gold_total = record.chests.lowGold + record.chests.highGold
         chest_info = [
             ("blue-chest", record.chests.blue),
@@ -82,7 +79,7 @@ class MapListItemWidget(QtWidgets.QWidget):
             ("dg-group", record.dungeons.group),
             ("dg-ava", record.dungeons.avalon),
         ]
-        chest_added = False
+        chest_idx = 0
         for icon_name, value in chest_info:
             if value <= 0:
                 continue
@@ -90,22 +87,22 @@ class MapListItemWidget(QtWidgets.QWidget):
             lbl = QtWidgets.QLabel()
             lbl.setPixmap(icon.scaled(20, 20, QtCore.Qt.AspectRatioMode.KeepAspectRatio))
             lbl.setToolTip(f"{icon_name}: {value}")
-            chest_row.addWidget(lbl)
-            chest_row.addWidget(QtWidgets.QLabel(str(value)))
-            chest_added = True
-        if chest_added:
-            chest_row.addStretch(1)
+            count_label = QtWidgets.QLabel(str(value))
+            row = chest_idx // 4
+            col = (chest_idx % 4) * 2
+            chest_grid.addWidget(lbl, row, col)
+            chest_grid.addWidget(count_label, row, col + 1)
+            chest_idx += 1
 
-        text_layout.addWidget(title)
-        text_layout.addWidget(map_type_label)
-        text_layout.addWidget(info)
-        if resource_added:
-            text_layout.addLayout(resource_row)
-        if chest_added:
-            text_layout.addLayout(chest_row)
+        text_layout.addLayout(title_row)
+        if resource_idx:
+            text_layout.addLayout(resource_grid)
+        if chest_idx:
+            text_layout.addLayout(chest_grid)
         text_layout.addStretch(1)
 
         layout.addWidget(self.thumbnail_label)
+        layout.addSpacing(6)
         layout.addLayout(text_layout)
         layout.addStretch(1)
 
