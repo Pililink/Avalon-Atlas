@@ -27,3 +27,4 @@ test*.txt
 .cursor/
 .vscode/
 hooks
+debug
