@@ -1,0 +1,29 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+.cursorrules
+.cursorignore
+config/*
+logs/
+cache/
+temp/
+test*.py
+# Virtual environments
+.venv
+models/*
+test*.txt
+.idea/
+.claude
+.env
+*.wav
+!test/*
+.ruff_cache/
+.pytest_cache/
+.claude/
+.cursor/
+.vscode/
+hooks
