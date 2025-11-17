@@ -80,15 +80,18 @@ class MainWindow(QtWidgets.QMainWindow):
         self.selected_list.setMinimumHeight(480)
         self.selected_list.setMouseTracking(True)
 
-        self._popup_list = QtWidgets.QListWidget(self)
-        self._popup_list.setWindowFlags(
-            QtCore.Qt.WindowType.Popup | QtCore.Qt.WindowType.FramelessWindowHint
-        )
-        self._popup_list.setFocusPolicy(QtCore.Qt.FocusPolicy.StrongFocus)
+        self._popup_list = QtWidgets.QListWidget()
+        self._popup_list.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
         self._popup_list.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
-        self._popup_list.hide()
+        self._popup_container = QtWidgets.QFrame()
+        popup_layout = QtWidgets.QVBoxLayout(self._popup_container)
+        popup_layout.setContentsMargins(0, 0, 0, 0)
+        popup_layout.addWidget(self._popup_list)
+        self._popup_container.setFrameShape(QtWidgets.QFrame.Shape.StyledPanel)
+        self._popup_container.setVisible(False)
 
         layout.addLayout(controls)
+        layout.addWidget(self._popup_container)
         layout.addWidget(self.selected_label)
         layout.addWidget(self.selected_list)
 
@@ -120,7 +123,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def execute_search(self) -> None:
         keyword = self.search_input.text()
         if not keyword.strip():
-            self._popup_list.hide()
+            self._popup_container.setVisible(False)
             return
 
         self.results = self.search_service.search(keyword)
@@ -129,7 +132,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def _show_popup_results(self) -> None:
         self._popup_list.clear()
         if not self.results:
-            self._popup_list.hide()
+            self._popup_container.setVisible(False)
             return
 
         display_results = self.results[:20]
@@ -142,14 +145,11 @@ class MainWindow(QtWidgets.QMainWindow):
             item.setData(QtCore.Qt.ItemDataRole.UserRole, result)
             self._popup_list.addItem(item)
 
-        width = self.search_input.width()
-        self._popup_list.setMinimumWidth(width)
-        pos = self.search_input.mapToGlobal(QtCore.QPoint(0, self.search_input.height()))
-        self._popup_list.move(pos)
-        self._popup_list.show()
-        self._popup_list.raise_()
+        height = min(240, self._popup_list.sizeHintForRow(0) * len(display_results) + 8)
+        self._popup_list.setMinimumHeight(height)
+        self._popup_container.setVisible(True)
         self._popup_list.setCurrentRow(0)
-        self._popup_list.setFocus()
+        self.search_input.setFocus()
 
     def _copy_selected_name(self, item: QtWidgets.QListWidgetItem) -> None:
         result = item.data(QtCore.Qt.ItemDataRole.UserRole)
@@ -161,7 +161,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.search_input.clear()
         self._populate_all_records()
         self._hide_preview()
-        self._popup_list.hide()
+        self._popup_container.setVisible(False)
 
     def closeEvent(self, event: QtGui.QCloseEvent) -> None:
         try:
@@ -174,7 +174,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _handle_popup_selection(self, item: QtWidgets.QListWidgetItem) -> None:
         result = item.data(QtCore.Qt.ItemDataRole.UserRole)
-        self._popup_list.hide()
+        self._popup_container.setVisible(False)
         if isinstance(result, SearchResult):
             self._add_selected_result(result)
 

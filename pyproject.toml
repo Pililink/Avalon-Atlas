@@ -26,9 +26,6 @@ build = [
 requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
-[tool.uv.scripts]
-build-exe = "python build.py"
-
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["atlas", "atlas.*", "maps"]
