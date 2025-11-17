@@ -11,7 +11,7 @@ from ..services.ocr_service import OcrService
 from ..services.search_service import MapSearchService, SearchResult
 from ..logger import get_logger
 from .resource_loader import ResourceLoader
-from .widgets import MapDetailWidget, MapListItemWidget
+from .widgets import MapListItemWidget
 
 logger = get_logger(__name__)
 
@@ -34,15 +34,19 @@ class MainWindow(QtWidgets.QMainWindow):
         self.hotkey_service = hotkey_service
         self.ocr_service = ocr_service
         self.resource_loader = resource_loader
+        self._preview_label: Optional[QtWidgets.QLabel] = None
 
         self._debounce_timer = QtCore.QTimer(self)
         self._debounce_timer.setSingleShot(True)
         self._debounce_timer.timeout.connect(self.execute_search)
 
         self.results: List[SearchResult] = []
+        self._item_by_slug: dict[str, QtWidgets.QListWidgetItem] = {}
+        self._preview_label: Optional[QtWidgets.QLabel] = None
 
         self._build_ui()
         self._connect_signals()
+        self._populate_all_records(initial=True)
 
         self.hotkeyText.connect(self._handle_hotkey_text)
         self.hotkey_service.set_callback(self.hotkeyText.emit)
@@ -73,10 +77,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.selected_list = QtWidgets.QListWidget()
         self.selected_list.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
-        self.selected_list.setMinimumHeight(200)
-
-        self.detail_widget = MapDetailWidget(self.resource_loader)
-        self.detail_widget.setMinimumHeight(280)
+        self.selected_list.setMinimumHeight(480)
+        self.selected_list.setMouseTracking(True)
 
         self._popup_list = QtWidgets.QListWidget(self)
         self._popup_list.setWindowFlags(
@@ -88,18 +90,19 @@ class MainWindow(QtWidgets.QMainWindow):
 
         layout.addLayout(controls)
         layout.addWidget(self.selected_label)
-        layout.addWidget(self.selected_list, 3)
-        layout.addWidget(self.detail_widget, 2)
+        layout.addWidget(self.selected_list)
 
         self.setCentralWidget(central)
         self.resize(900, 700)
+        self._preview_label = QtWidgets.QLabel(self)
+        self._preview_label.setWindowFlags(QtCore.Qt.WindowType.ToolTip)
+        self._preview_label.hide()
 
     def _connect_signals(self) -> None:
         self.search_button.clicked.connect(self.execute_search)
         self.clear_button.clicked.connect(self._handle_clear)
         self.search_input.returnPressed.connect(self.execute_search)
         self.search_input.textChanged.connect(self._on_text_changed)
-        self.selected_list.currentItemChanged.connect(self._on_selection_changed)
         self.selected_list.itemDoubleClicked.connect(self._copy_selected_name)
         self._popup_list.itemClicked.connect(self._handle_popup_selection)
         self._popup_list.itemActivated.connect(self._handle_popup_selection)
@@ -148,14 +151,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self._popup_list.setCurrentRow(0)
         self._popup_list.setFocus()
 
-    def _on_selection_changed(self, current: Optional[QtWidgets.QListWidgetItem], previous):
-        if current is None:
-            self.detail_widget.set_record(None)
-            return
-        result = current.data(QtCore.Qt.ItemDataRole.UserRole)
-        if isinstance(result, SearchResult):
-            self.detail_widget.set_record(result.record)
-
     def _copy_selected_name(self, item: QtWidgets.QListWidgetItem) -> None:
         result = item.data(QtCore.Qt.ItemDataRole.UserRole)
         if isinstance(result, SearchResult):
@@ -164,9 +159,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _handle_clear(self) -> None:
         self.search_input.clear()
-        self.selected_list.clear()
-        self.detail_widget.set_record(None)
-        self.selected_label.setText("已选 0 条")
+        self._populate_all_records()
+        self._hide_preview()
         self._popup_list.hide()
 
     def closeEvent(self, event: QtGui.QCloseEvent) -> None:
@@ -175,6 +169,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.ocr_service.close()
         except Exception as exc:
             logger.warning("关闭服务异常: %s", exc)
+        self._preview_label.hide()
         return super().closeEvent(event)
 
     def _handle_popup_selection(self, item: QtWidgets.QListWidgetItem) -> None:
@@ -183,13 +178,19 @@ class MainWindow(QtWidgets.QMainWindow):
         if isinstance(result, SearchResult):
             self._add_selected_result(result)
 
+    def _populate_all_records(self, initial: bool = False) -> None:
+        self.selected_list.clear()
+        self._item_by_slug.clear()
+        self._all_records = []
+        self.selected_label.setText("已选 0 条" if not initial else "已选 0 条")
+
     def _add_selected_result(self, result: SearchResult) -> None:
-        for row in range(self.selected_list.count()):
-            existing = self.selected_list.item(row).data(QtCore.Qt.ItemDataRole.UserRole)
-            if isinstance(existing, SearchResult) and existing.record.slug == result.record.slug:
-                self.selected_list.setCurrentRow(row)
-                self.detail_widget.set_record(existing.record)
-                return
+        existing_item = self._item_by_slug.get(result.record.slug)
+        if existing_item:
+            row = self.selected_list.row(existing_item)
+            self.selected_list.setCurrentRow(row)
+            self.selected_list.scrollToItem(existing_item, QtWidgets.QAbstractItemView.ScrollHint.PositionAtCenter)
+            return
 
         item = QtWidgets.QListWidgetItem()
         widget = MapListItemWidget(result.record, self.resource_loader)
@@ -198,4 +199,26 @@ class MainWindow(QtWidgets.QMainWindow):
         self.selected_list.insertItem(0, item)
         self.selected_list.setItemWidget(item, widget)
         self.selected_list.setCurrentItem(item)
+        widget.hovered.connect(self._show_preview)
+        widget.unhovered.connect(self._hide_preview)
+        self._item_by_slug[result.record.slug] = item
         self.selected_label.setText(f"已选 {self.selected_list.count()} 条")
+
+    def _show_preview(self, record: MapRecord) -> None:
+        if not self._preview_label:
+            return
+        pixmap = self.resource_loader.map_full_image(record.slug)
+        scaled = pixmap.scaled(
+            360,
+            360,
+            QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+            QtCore.Qt.TransformationMode.SmoothTransformation,
+        )
+        self._preview_label.setPixmap(scaled)
+        cursor_pos = QtGui.QCursor.pos()
+        self._preview_label.move(cursor_pos + QtCore.QPoint(20, 20))
+        self._preview_label.show()
+
+    def _hide_preview(self) -> None:
+        if self._preview_label:
+            self._preview_label.hide()
