@@ -69,17 +69,26 @@ class MainWindow(QtWidgets.QMainWindow):
         controls.addWidget(self.search_button)
         controls.addWidget(self.clear_button)
 
-        self.result_label = QtWidgets.QLabel("准备就绪")
+        self.selected_label = QtWidgets.QLabel("已选 0 条")
 
-        self.results_list = QtWidgets.QListWidget()
-        self.results_list.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
+        self.selected_list = QtWidgets.QListWidget()
+        self.selected_list.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
+        self.selected_list.setMinimumHeight(200)
 
         self.detail_widget = MapDetailWidget(self.resource_loader)
         self.detail_widget.setMinimumHeight(280)
 
+        self._popup_list = QtWidgets.QListWidget(self)
+        self._popup_list.setWindowFlags(
+            QtCore.Qt.WindowType.Popup | QtCore.Qt.WindowType.FramelessWindowHint
+        )
+        self._popup_list.setFocusPolicy(QtCore.Qt.FocusPolicy.StrongFocus)
+        self._popup_list.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
+        self._popup_list.hide()
+
         layout.addLayout(controls)
-        layout.addWidget(self.result_label)
-        layout.addWidget(self.results_list, 3)
+        layout.addWidget(self.selected_label)
+        layout.addWidget(self.selected_list, 3)
         layout.addWidget(self.detail_widget, 2)
 
         self.setCentralWidget(central)
@@ -90,8 +99,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.clear_button.clicked.connect(self._handle_clear)
         self.search_input.returnPressed.connect(self.execute_search)
         self.search_input.textChanged.connect(self._on_text_changed)
-        self.results_list.currentItemChanged.connect(self._on_selection_changed)
-        self.results_list.itemDoubleClicked.connect(self._copy_selected_name)
+        self.selected_list.currentItemChanged.connect(self._on_selection_changed)
+        self.selected_list.itemDoubleClicked.connect(self._copy_selected_name)
+        self._popup_list.itemClicked.connect(self._handle_popup_selection)
+        self._popup_list.itemActivated.connect(self._handle_popup_selection)
 
     def _handle_hotkey_text(self, text: str) -> None:
         self.statusBar().showMessage(f"OCR 识别: {text}", 3000)
@@ -106,31 +117,36 @@ class MainWindow(QtWidgets.QMainWindow):
     def execute_search(self) -> None:
         keyword = self.search_input.text()
         if not keyword.strip():
-            self.results_list.clear()
-            self.detail_widget.set_record(None)
-            self.result_label.setText("请输入关键字")
+            self._popup_list.hide()
             return
 
         self.results = self.search_service.search(keyword)
-        self._render_results()
+        self._show_popup_results()
 
-    def _render_results(self) -> None:
-        self.results_list.clear()
+    def _show_popup_results(self) -> None:
+        self._popup_list.clear()
         if not self.results:
-            self.result_label.setText("未找到匹配地图")
-            self.detail_widget.set_record(None)
+            self._popup_list.hide()
             return
 
-        for result in self.results:
-            item = QtWidgets.QListWidgetItem()
-            widget = MapListItemWidget(result.record, self.resource_loader)
+        display_results = self.results[:20]
+        for result in display_results:
+            text = f"{result.record.name} ({result.record.tier})"
+            item = QtWidgets.QListWidgetItem(text)
+            thumb = self.resource_loader.map_thumbnail(result.record.slug, size=(64, 36))
+            item.setIcon(QtGui.QIcon(thumb))
+            item.setToolTip(f"资源 {result.record.resources.rock}/{result.record.resources.wood}/{result.record.resources.ore}")
             item.setData(QtCore.Qt.ItemDataRole.UserRole, result)
-            item.setSizeHint(widget.sizeHint())
-            self.results_list.addItem(item)
-            self.results_list.setItemWidget(item, widget)
+            self._popup_list.addItem(item)
 
-        self.result_label.setText(f"匹配 {len(self.results)} 条")
-        self.results_list.setCurrentRow(0)
+        width = self.search_input.width()
+        self._popup_list.setMinimumWidth(width)
+        pos = self.search_input.mapToGlobal(QtCore.QPoint(0, self.search_input.height()))
+        self._popup_list.move(pos)
+        self._popup_list.show()
+        self._popup_list.raise_()
+        self._popup_list.setCurrentRow(0)
+        self._popup_list.setFocus()
 
     def _on_selection_changed(self, current: Optional[QtWidgets.QListWidgetItem], previous):
         if current is None:
@@ -148,9 +164,10 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _handle_clear(self) -> None:
         self.search_input.clear()
-        self.results_list.clear()
+        self.selected_list.clear()
         self.detail_widget.set_record(None)
-        self.result_label.setText("已清除")
+        self.selected_label.setText("已选 0 条")
+        self._popup_list.hide()
 
     def closeEvent(self, event: QtGui.QCloseEvent) -> None:
         try:
@@ -159,3 +176,26 @@ class MainWindow(QtWidgets.QMainWindow):
         except Exception as exc:
             logger.warning("关闭服务异常: %s", exc)
         return super().closeEvent(event)
+
+    def _handle_popup_selection(self, item: QtWidgets.QListWidgetItem) -> None:
+        result = item.data(QtCore.Qt.ItemDataRole.UserRole)
+        self._popup_list.hide()
+        if isinstance(result, SearchResult):
+            self._add_selected_result(result)
+
+    def _add_selected_result(self, result: SearchResult) -> None:
+        for row in range(self.selected_list.count()):
+            existing = self.selected_list.item(row).data(QtCore.Qt.ItemDataRole.UserRole)
+            if isinstance(existing, SearchResult) and existing.record.slug == result.record.slug:
+                self.selected_list.setCurrentRow(row)
+                self.detail_widget.set_record(existing.record)
+                return
+
+        item = QtWidgets.QListWidgetItem()
+        widget = MapListItemWidget(result.record, self.resource_loader)
+        item.setData(QtCore.Qt.ItemDataRole.UserRole, result)
+        item.setSizeHint(widget.sizeHint())
+        self.selected_list.insertItem(0, item)
+        self.selected_list.setItemWidget(item, widget)
+        self.selected_list.setCurrentItem(item)
+        self.selected_label.setText(f"已选 {self.selected_list.count()} 条")
