@@ -8,7 +8,12 @@ import mss
 import numpy as np
 from PIL import Image
 from pynput import mouse
-import pytesseract
+
+try:
+    import pytesseract
+except ImportError:  # pragma: no cover - 可选依赖
+    pytesseract = None  # type: ignore[assignment]
+
 from rapidocr_onnxruntime import RapidOCR
 
 from ..config import AppConfig
@@ -21,6 +26,7 @@ logger = get_logger(__name__)
 class OCRResult:
     text: str
     image: Image.Image
+    raw_text: str
 
 
 class OcrService:
@@ -28,12 +34,16 @@ class OcrService:
         self.config = config
         self.lang = lang
         self._mouse = mouse.Controller()
+        self._backend = self.config.ocr_backend.lower()
         self._rapid: Optional[RapidOCR] = None
-        if self.config.ocr_backend.lower() == "rapidocr":
+        if self._backend in {"rapidocr", "auto"}:
             try:
                 self._rapid = RapidOCR()
             except Exception as exc:
-                logger.warning("RapidOCR 初始化失败，回退到 tesseract: %s", exc)
+                if self._backend == "rapidocr":
+                    logger.warning("RapidOCR 初始化失败: %s", exc)
+                else:
+                    logger.warning("RapidOCR 初始化失败，将回退 tesseract: %s", exc)
 
     def capture_text(self) -> OCRResult | None:
         with mss.mss() as sct:
@@ -41,25 +51,46 @@ class OcrService:
             shot = sct.grab(bbox)
         image = Image.frombytes("RGB", shot.size, shot.rgb)
         self._maybe_save_debug(image)
-        text = self._do_ocr(image)
-        cleaned = self._normalize_text(text or "")
+        raw_text, cleaned = self.recognize_image(image)
         if not cleaned:
             return None
-        return OCRResult(text=cleaned, image=image)
+        return OCRResult(text=cleaned, image=image, raw_text=raw_text)
+
+    def recognize_image(self, image: Image.Image) -> tuple[str, str]:
+        raw_text = self._do_ocr(image) or ""
+        cleaned = self._normalize_text(raw_text)
+        return raw_text, cleaned
 
     def _do_ocr(self, image: Image.Image) -> str:
-        if self._rapid is not None:
-            img_np = np.array(image)
-            try:
-                rec_res = self._rapid(img_np)
-            except Exception as exc:
-                logger.warning("RapidOCR 调用失败，回退 tesseract: %s", exc)
-            else:
-                text = self._extract_rapid_text(rec_res)
-                if text:
-                    return text
+        backend = self._backend
+        if backend == "rapidocr":
+            return self._run_rapidocr(image)
+        if backend == "tesseract":
+            return self._run_tesseract(image)
+        if backend == "auto":
+            text = self._run_rapidocr(image)
+            if text:
+                return text
+            return self._run_tesseract(image)
+        logger.warning("未知 OCR backend: %s", self.config.ocr_backend)
+        return ""
 
-        # fallback to tesseract（若未安装则捕获异常返回空）
+    def _run_rapidocr(self, image: Image.Image) -> str:
+        if self._rapid is None:
+            logger.warning("RapidOCR backend 未正确初始化，无法执行 rapidocr OCR")
+            return ""
+        img_np = np.array(image.convert("RGB"))
+        try:
+            rec_res = self._rapid(img_np)
+        except Exception as exc:
+            logger.warning("RapidOCR 调用失败: %s", exc)
+            return ""
+        return self._extract_rapid_text(rec_res)
+
+    def _run_tesseract(self, image: Image.Image) -> str:
+        if pytesseract is None:
+            logger.warning("pytesseract 未安装，无法使用 tesseract backend")
+            return ""
         try:
             return pytesseract.image_to_string(image, lang=self.lang)
         except Exception as exc:
@@ -102,7 +133,7 @@ class OcrService:
     def _normalize_text(self, text: str) -> str:
         normalized = text.replace("\n", " ").replace("_", "-").strip().lower()
         normalized = re.sub(r"[^a-z0-9\- ]", "", normalized)
-        normalized = normalized.replace(" ", "")
+        # normalized = normalized.replace(" ", "")
         return normalized
 
     def _compute_bbox(self, sct: mss.mss) -> dict:

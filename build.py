@@ -25,6 +25,8 @@ def main() -> int:
         "--onedir",
         "--add-data",
         f"static{os.pathsep}static",
+        "--collect-all",
+        "rapidocr_onnxruntime",
         "main.py",
     ]
 
