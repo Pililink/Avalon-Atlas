@@ -11,60 +11,71 @@
 - 名称格式为纯英文小写（`xxx-xxx`、`xxx-xx-xxx`），用于静态资源映射。
 
 ## 算法流程
-1. 启动时加载全部地图数组 `maps`。
-2. 创建 `searcher = createFuzzySearch(maps, { key: 'name', strategy: 'aggressive' })`。
-   - `strategy: 'aggressive'` 会将关键字拆分多种模式（前缀、子串、跳字匹配），适合地图命名规则。
-   - 库内部维护倒排索引，查询为 `searcher(keyword)`，返回命中项与得分。
-3. 当用户输入关键字 `keyword` 后：
-   - 统一转换为小写、trim、去掉多余空格/非 `a-z-` 字符。
-   - 若字符串长度 ≥ 2 则调用 `searcher(keyword)`；否则直接返回空列表以免噪音。
-4. 搜索结果按 `microfuzz` 默认得分排序，我们额外做以下处理：
-   - 结果对象 `{ item, score }` → 仅取 `item`。
-   - 将全部命中结果按得分排序展示在 GUI 列表中，用户可以滚动浏览；不再限制 Top 5。
-   - 当关键字能完整匹配 `name` 时优先显示，并在 UI 中置顶。
-5. 查询时的 UI 反馈：
-   - 输入节流（200ms）后触发搜索。
-   - 显示“共匹配 X 条（仅显示前 5 条）”。
-   - 若无结果则提示“未找到”。
+1. 启动时加载全部地图数组 `maps`，并缓存成 `MapRecord` 列表。
+2. 查询阶段直接在内存中进行“子序列匹配 + 动态规划评分”：
+   - 将用户输入统一为小写、trim，并要求长度 ≥ 2。
+   - 遍历全部 `MapRecord`，对 `record.name` 执行 `subsequence_match(query, name)`。
+   - 算法逐字符扫描候选串，通过 DP 比较 `query` 每个字符在目标串中的所有匹配位置，累积分值并记录路径：
+     - 命中基础得分：例如 10 分。
+     - 额外奖励：位于单词起始（`-/_/空格` 后）、字符串起始、连续相邻等。
+     - 惩罚：跨越的非匹配字符越多，扣分越多。
+   - 得分最高的路径会输出匹配索引数组 `positions`（用于 UI 高亮）。
+3. 所有命中结果按 `score` → `tier` → `slug` 排序，截取前 `max_results`（默认 25）展示在弹出列表中。
+4. 若整个查询没有 DP 命中，则回退至 `_fallback_match`（前后缀匹配 + 片段比对）确保仍能返回候选。
+5. UI 层的行为保持不变：输入节流（200ms）触发搜索，得分最高的结果位于顶部；未来可根据 `positions` 渲染红色高亮。
 
 ## 集成方案
-- 在 `SearchService` 中引入 `microfuzz` 的 Python 实现方案：
-  1. 可直接调用 `@nozbe/microfuzz` 通过 `pyodide`?（不可行）。
-  2. 推荐方式：使用 Python 库 `rapidfuzz`（API 与 microfuzz 类似）并实现 `FuzzySearcher`：
-     - 初始化时构建 `rapidfuzz.process.extract` 的索引。
-     - 搜索时返回得分及对象，排序方式与微调相同。
-  3. 另一个可选是使用 `microfuzz` WebAssembly 版本，通过 `py_mini_racer` 调用。考虑复杂度，本地 Python 采用 `rapidfuzz`/`fuzzywuzzy` 更简洁。
-- 保留当前模块的自定义匹配策略作为保底：若 `rapidfuzz` 得分低于阈值，可 fallback 到前后三字符组合。
-- 查询服务返回结构：`SearchResult(name, score, tier, map_type, match_reason)`，UI 读取 `score` 排序并显示 Top 5。
+- 在 `atlas/services/fuzzy_match.py` 中实现 `subsequence_match`：
+  - 输入：`query`、`candidate`。
+  - 输出：`MatchDetail(score, positions)`，若不存在合法子序列则返回 `None`。
+  - 采用二维 DP 表缓存每个 `query[:i]` 匹配到 `candidate[:j]` 的最高得分，以及回溯指针。
+- `MapSearchService` 的 `_fuzzy_match` 遍历所有记录并调用上述函数，生成 `SearchResult(record, score, method='subsequence', positions=...)`。
+- `_fallback_match` 仍保留，用于极端输入（如含特殊符号或 DP 无解）时保证最少结果。
+- 缓存：对最近 64 次查询进行 LRU 缓存，复用上一轮结果。
 
 ## 示例伪代码
 ```python
-from rapidfuzz import process, fuzz
+def subsequence_match(pattern: str, text: str) -> MatchDetail | None:
+    pattern = pattern.lower()
+    text = text.lower()
+    if len(pattern) > len(text):
+        return None
 
-class MapSearcher:
-    def __init__(self, maps):
-        self.maps = maps
+    neg_inf = float("-inf")
+    dp = [[neg_inf] * len(text) for _ in pattern]
+    backtrack = [[-1] * len(text) for _ in pattern]
 
-    def search(self, keyword: str):
-        keyword = keyword.lower().strip()
-        if len(keyword) < 2:
-            return []
-        matches = process.extract(
-            keyword,
-            self.maps,
-            processor=lambda m: m.name,
-            scorer=fuzz.WRatio,
-            limit=None,  # 返回全部命中项
-        )
-        return [SearchResult(item=match[2], score=match[1]) for match in matches]
+    # 初始化第一列
+    for j, ch in enumerate(text):
+        if ch == pattern[0]:
+            dp[0][j] = base_score(j)
+
+    for i in range(1, len(pattern)):
+        for j, ch in enumerate(text):
+            if ch != pattern[i]:
+                continue
+            best = neg_inf
+            best_prev = -1
+            for k in range(j):
+                prev = dp[i - 1][k]
+                if prev == neg_inf:
+                    continue
+                score = prev + transition_score(text, k, j)
+                if score > best:
+                    best = score
+                    best_prev = k
+            dp[i][j] = best
+            backtrack[i][j] = best_prev
+
+    # 取最后一行最高得分并回溯 positions
 ```
-- `process.extract` 返回 `(candidate_name, score, original_obj)`，根据 score (0-100) 排序。
-- 列表可根据需要在 UI 中滚动展示。
+- `base_score`/`transition_score` 根据首字母、相邻字符、间隔惩罚等规则计算得分。
+- 回溯得到的 `positions` 可直接用于 UI 高亮。
 
 ## 辅助查询方式
 - 热键 OCR：识别出的地图名也通过同样的 `search()`，若返回多个结果，则自动选择得分最高的一项并填入详情。
 - 历史记录：缓存最近 5 次查询，作为补充建议列表。
 
 ## 兼容性
-- 即使未来数据量增大（几千条地图），`rapidfuzz`/`microfuzz` 都能在毫秒级返回结果。
-- 若需要前端同样的体验，可在后续 Web 版直接沿用 `ava-maps` 的 React + microfuzz 实现。
+- 算法为 O(N * M * L)（N=地图数量，M=关键字长度，L=候选名长度），在 400 条地图、每个名字 ~15 字符场景下性能仍然在毫秒级。
+- 未来若需要 Web 同步体验，可在前端复用相同的子序列匹配规则，或使用已有的 fuzzy finder 算法（fzf/microfuzz）实现一致的得分策略。
