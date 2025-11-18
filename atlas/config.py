@@ -27,8 +27,6 @@ class AppConfig(BaseModel):
         description="地图数据路径，支持绝对路径；若缺失则回退到内置资源",
     )
     static_root: Path = Field(default=PACKAGE_ROOT.parent / "static")
-    hotkey: str = Field(default="ctrl+alt+m", description="触发 OCR 的热键组合")
-    debounce_ms: int = Field(default=200, ge=0)
     ocr_backend: str = Field(
         default="rapidocr",
         description="rapidocr / tesseract / auto（auto 表示 rapidocr 失败时才回退 tesseract）",
@@ -36,6 +34,8 @@ class AppConfig(BaseModel):
     ocr_region: OCRRegion = Field(default_factory=OCRRegion)
     ocr_debug: bool = Field(default=True, description="是否输出 OCR 截图以便调试")
     debug_dir: Path = Field(default=PACKAGE_ROOT.parent / "debug")
+    hotkey: str = Field(default="ctrl+alt+m", description="触发 OCR 的热键组合")
+    debounce_ms: int = Field(default=200, ge=0)
     config_path: Optional[Path] = Field(default=None, exclude=True, description="当前配置文件路径")
 
     class Config:

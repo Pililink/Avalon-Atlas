@@ -99,12 +99,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.hotkey_input.setReadOnly(True)
         self.hotkey_record_button = QtWidgets.QPushButton("录制热键")
         self.hotkey_button = QtWidgets.QPushButton("保存热键")
+        self.help_button = QtWidgets.QPushButton("使用说明")
 
         hotkey_layout = QtWidgets.QHBoxLayout()
         hotkey_layout.addWidget(QtWidgets.QLabel("热键："))
         hotkey_layout.addWidget(self.hotkey_input)
         hotkey_layout.addWidget(self.hotkey_record_button)
         hotkey_layout.addWidget(self.hotkey_button)
+        hotkey_layout.addWidget(self.help_button)
 
         self.search_input = QtWidgets.QLineEdit()
         self._update_search_placeholder()
@@ -162,6 +164,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def _connect_signals(self) -> None:
         self.hotkey_record_button.clicked.connect(self._start_hotkey_recording)
         self.hotkey_button.clicked.connect(self._handle_hotkey_update)
+        self.help_button.clicked.connect(self._show_usage_help)
         self.search_button.clicked.connect(self.execute_search)
         self.clear_button.clicked.connect(self._handle_clear)
         self.search_input.returnPressed.connect(self._handle_return_pressed)
@@ -169,6 +172,15 @@ class MainWindow(QtWidgets.QMainWindow):
         self.selected_list.itemDoubleClicked.connect(self._copy_selected_name)
         self._popup_list.itemClicked.connect(self._handle_popup_selection)
         self._popup_list.itemActivated.connect(self._handle_popup_selection)
+
+    def _show_usage_help(self) -> None:
+        message = "\n".join([
+            "1. 设置全局热键后切回游戏，按下该热键触发 OCR。",
+            "2. 将鼠标停在地图名称附近，等待识别完成。",
+            "3. 成功识别的地图会自动加入列表，可继续在搜索框筛选。",
+            "4. 双击列表项可复制名称，点击清空可重新选择。"
+        ])
+        QtWidgets.QMessageBox.information(self, "使用说明", message)
 
     def _handle_hotkey_text(self, text: str) -> None:
         normalized = text.strip()
