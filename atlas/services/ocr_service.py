@@ -182,10 +182,13 @@ class OcrService:
         return "\n".join(texts)
 
     def _normalize_text(self, text: str) -> str:
+        if not text:
+            return ""
         resolved = self._resolve_map_name(text)
         if resolved:
             return resolved
-        return self._fallback_normalize(text)
+        # Return empty when no known map name matched to avoid UI selection
+        return ""
 
     def _resolve_map_name(self, text: str) -> str:
         if not text or not self._slug_lookup:
