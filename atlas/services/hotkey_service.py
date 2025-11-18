@@ -21,6 +21,7 @@ class HotkeyService:
         self._hotkey_handle: Optional[int] = None
         self._callback: Optional[Callable[[str], None]] = None
         self._lock = threading.Lock()
+        self._ocr_lock = threading.Lock()
         self._current_combo: Optional[str] = None
 
     def set_callback(self, callback: Callable[[str], None]) -> None:
@@ -60,12 +61,17 @@ class HotkeyService:
         self._executor.submit(self._run_ocr)
 
     def _run_ocr(self) -> None:
+        if not self._ocr_lock.acquire(blocking=False):
+            logger.info("已有 OCR 任务正在执行，忽略本次触发")
+            return
         try:
             logger.info("执行 OCR 捕获")
             result = self.ocr_service.capture_text()
         except Exception as exc:
             logger.exception("OCR 失败: %s", exc)
             return
+        finally:
+            self._ocr_lock.release()
 
         if not result:
             logger.info("OCR 未识别到文本")

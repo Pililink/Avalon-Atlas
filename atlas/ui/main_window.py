@@ -172,6 +172,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _handle_hotkey_text(self, text: str) -> None:
         self.statusBar().showMessage(f"OCR 识别: {text}", 3000)
+        self._pending_hotkey_insert = True
         self.search_input.setText(text)
         self.execute_search()
 
@@ -205,6 +206,7 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             self.statusBar().showMessage(f"热键已更新为 {combo}", 3000)
         self._update_search_placeholder()
+        self._pending_hotkey_insert = False
 
     def _start_hotkey_recording(self) -> None:
         if self._hotkey_record_thread and self._hotkey_record_thread.is_alive():
@@ -257,6 +259,21 @@ class MainWindow(QtWidgets.QMainWindow):
         self.hotkey_record_button.setText("录制热键")
         self.statusBar().showMessage(f"录制热键失败: {message}", 5000)
 
+    def _maybe_auto_add_hotkey_result(self) -> None:
+        if not self._pending_hotkey_insert:
+            return
+        self._pending_hotkey_insert = False
+        if not self.results:
+            self.statusBar().showMessage("OCR 未匹配到任何地图", 4000)
+            return
+        result = self.results[0]
+        self._add_selected_result(result)
+        self.statusBar().showMessage(f"已自动添加 {result.record.name}", 3000)
+        self.search_input.blockSignals(True)
+        self.search_input.setText(result.record.name)
+        self.search_input.blockSignals(False)
+        self._popup_container.hide()
+
     def _update_search_placeholder(self) -> None:
         placeholder_hotkey = self.config.hotkey.upper().replace(" ", "") if self.config.hotkey else "CTRL+ALT+M"
         self.search_input.setPlaceholderText(f"输入地图名称或使用热键 {placeholder_hotkey} OCR")
@@ -282,6 +299,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.results = self.search_service.search(keyword)
         self._show_popup_results()
+        self._maybe_auto_add_hotkey_result()
 
     def _show_popup_results(self) -> None:
         self._popup_list.clear()
