@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
+from difflib import SequenceMatcher
 import re
-from typing import Optional
+import unicodedata
+from typing import Optional, Sequence
 
 import mss
 import numpy as np
@@ -17,9 +20,30 @@ except ImportError:  # pragma: no cover - 可选依赖
 from rapidocr_onnxruntime import RapidOCR
 
 from ..config import AppConfig
+from ..data.repository import MapRepository
 from ..logger import get_logger
 
 logger = get_logger(__name__)
+_MAP_CANDIDATE_PATTERN = re.compile(
+    r"[A-Za-z]{2,}\s*-\s*[A-Za-z]{2,}(?:\s*-\s*[A-Za-z]{2,})?",
+    re.MULTILINE,
+)
+_OCR_CHAR_FIXES = str.maketrans(
+    {
+        "0": "o",
+        "1": "l",
+        "2": "z",
+        "3": "e",
+        "4": "a",
+        "5": "s",
+        "6": "b",
+        "7": "t",
+        "8": "b",
+        "9": "g",
+        "|": "l",
+        "¡": "l",
+    }
+)
 
 
 @dataclass(slots=True)
@@ -30,7 +54,7 @@ class OCRResult:
 
 
 class OcrService:
-    def __init__(self, config: AppConfig, lang: str = "eng"):
+    def __init__(self, config: AppConfig, lang: str = "eng", *, repository: MapRepository | None = None):
         self.config = config
         self.lang = lang
         self._mouse = mouse.Controller()
@@ -44,6 +68,34 @@ class OcrService:
                     logger.warning("RapidOCR 初始化失败: %s", exc)
                 else:
                     logger.warning("RapidOCR 初始化失败，将回退 tesseract: %s", exc)
+        self._slug_lookup = self._build_slug_lookup(repository)
+        self._match_cache: dict[str, str] = {}
+        self._fuzzy_threshold = 0.8
+
+    def _build_slug_lookup(self, repository: MapRepository | None) -> dict[str, str]:
+        slug_lookup: dict[str, str] = {}
+        records: Sequence | None = None
+        source_repo = repository
+        if source_repo is not None:
+            try:
+                source_repo.ensure_loaded()
+                records = source_repo.all()
+            except Exception as exc:
+                logger.warning("从 MapRepository 读取地图数据失败: %s", exc)
+        if records is None:
+            try:
+                fallback_repo = MapRepository(self.config.maps_data_path)
+                fallback_repo.load()
+                records = fallback_repo.all()
+            except Exception as exc:
+                logger.warning("无法加载地图名称用于 OCR 矫正: %s", exc)
+                records = None
+        if not records:
+            return slug_lookup
+        for record in records:
+            slug_lookup[record.slug] = record.name
+        logger.info("OCR map name lookup 构建完成，共 %s 条", len(slug_lookup))
+        return slug_lookup
 
     def capture_text(self) -> OCRResult | None:
         with mss.mss() as sct:
@@ -101,6 +153,7 @@ class OcrService:
         """
         RapidOCR 返回值兼容处理：
         - 形式通常为 [ [points, text, score], ... ] 或 [ [text, score], ... ]
+        返回所有条目的文本，按 RapidOCR 识别顺序拼接，便于后续正则提取地图名称。
         """
         if not rec_res:
             return ""
@@ -109,7 +162,7 @@ class OcrService:
         if isinstance(rec_res, tuple) and len(rec_res) == 2 and isinstance(rec_res[0], (list, tuple)):
             rec_res = rec_res[0]
 
-        candidates = []
+        texts: list[str] = []
         for item in rec_res:
             if not isinstance(item, (list, tuple)):
                 continue
@@ -119,21 +172,93 @@ class OcrService:
                 text, score = item
             else:
                 continue
-            try:
-                score_val = float(score)
-            except Exception:
-                score_val = 0.0
-            candidates.append((str(text), score_val))
+            text_str = str(text).strip()
+            if not text_str:
+                continue
+            texts.append(text_str)
 
-        if not candidates:
+        if not texts:
             return ""
-        candidates.sort(key=lambda x: x[1], reverse=True)
-        return candidates[0][0]
+        return "\n".join(texts)
 
     def _normalize_text(self, text: str) -> str:
+        resolved = self._resolve_map_name(text)
+        if resolved:
+            return resolved
+        return self._fallback_normalize(text)
+
+    def _resolve_map_name(self, text: str) -> str:
+        if not text or not self._slug_lookup:
+            return ""
+        candidates = self._extract_map_candidates(text)
+        for candidate in candidates:
+            slug = self._standardize_candidate(candidate)
+            match = self._match_known_slug(slug)
+            if match:
+                return match
+        fallback_slug = self._standardize_candidate(text)
+        return self._match_known_slug(fallback_slug)
+
+    def _extract_map_candidates(self, text: str) -> Sequence[str]:
+        normalized = text.replace("_", "-")
+        return [match.group(0) for match in _MAP_CANDIDATE_PATTERN.finditer(normalized)]
+
+    def _standardize_candidate(self, text: str) -> str:
+        if not text:
+            return ""
+        normalized = unicodedata.normalize("NFKC", text)
+        normalized = normalized.translate(_OCR_CHAR_FIXES)
+        normalized = normalized.replace("—", "-").replace("–", "-").replace("―", "-").replace("−", "-")
+        normalized = normalized.replace("_", "-")
+        normalized = normalized.lower()
+        normalized = re.sub(r"[^a-z\- ]", "", normalized)
+        normalized = normalized.replace(" ", "")
+        normalized = re.sub(r"-{2,}", "-", normalized).strip("-")
+        if not normalized or "-" not in normalized:
+            return ""
+        parts = [part for part in normalized.split("-") if part]
+        if len(parts) < 2:
+            return ""
+        if len(parts) > 3:
+            parts = parts[:3]
+        slug = "-".join(parts)
+        hyphen_count = slug.count("-")
+        if hyphen_count not in (1, 2):
+            return ""
+        return slug
+
+    def _match_known_slug(self, slug: str) -> str:
+        if not slug or not self._slug_lookup:
+            return ""
+        direct = self._slug_lookup.get(slug)
+        if direct:
+            self._match_cache[slug] = direct
+            return direct
+        cached = self._match_cache.get(slug)
+        if cached:
+            return cached
+        best_name = ""
+        best_score = 0.0
+        slug_hyphen = slug.count("-")
+        for known_slug, name in self._slug_lookup.items():
+            known_hyphen = known_slug.count("-")
+            if abs(known_hyphen - slug_hyphen) > 1:
+                continue
+            length_diff = abs(len(known_slug) - len(slug))
+            if length_diff > 4:
+                continue
+            score = SequenceMatcher(None, slug, known_slug).ratio()
+            if score > best_score:
+                best_score = score
+                best_name = name
+        if best_score >= self._fuzzy_threshold and best_name:
+            self._match_cache[slug] = best_name
+            return best_name
+        return ""
+
+    def _fallback_normalize(self, text: str) -> str:
         normalized = text.replace("\n", " ").replace("_", "-").strip().lower()
         normalized = re.sub(r"[^a-z0-9\- ]", "", normalized)
-        # normalized = normalized.replace(" ", "")
         return normalized
 
     def _compute_bbox(self, sct: mss.mss) -> dict:
@@ -167,6 +292,7 @@ class OcrService:
             return
         debug_dir = self.config.debug_dir
         debug_dir.mkdir(parents=True, exist_ok=True)
-        path = debug_dir / "ocr_capture.png"
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        path = debug_dir / f"ocr_capture_{timestamp}.png"
         image.save(path)
         logger.info("已保存 OCR 调试截图: %s", path)

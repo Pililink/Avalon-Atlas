@@ -10,6 +10,15 @@
 - **静态资源**：`static/maps` 提供地图缩略图，`static/assets` 包含箱子/资源等图标，用于列表和详情展示。
 - **统一数据模型**：`maps/model.py` 描述 `tier`、`map_type`、`chests`、`dungeons`、`resources`、`brecilien` 等字段，读取时会校验名称格式（小写 + `-`）。
 
+## 配置
+首次运行若根目录不存在 `config.json`，程序会自动写入一份默认配置（包含 `hotkey`、OCR 区域等字段）。只需修改该文件即可调整热键，例如：
+```json
+{
+  "hotkey": "ctrl+alt+k"
+}
+```
+保存后重启应用即可生效。
+
 ## 项目结构
 ```
 Atlas/

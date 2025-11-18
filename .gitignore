@@ -28,3 +28,4 @@ test*.txt
 .vscode/
 hooks
 debug
+config.json

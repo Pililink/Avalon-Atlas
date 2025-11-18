@@ -6,6 +6,7 @@ from pathlib import Path
 from PIL import Image
 
 from atlas.config import load_config
+from atlas.data.repository import MapRepository
 from atlas.services.ocr_service import OcrService
 
 
@@ -35,7 +36,9 @@ def main() -> int:
         print(f"[INFO] 未在 {debug_dir} 找到 PNG 图片")
         return 0
 
-    service = OcrService(config)
+    repository = MapRepository(config.maps_data_path)
+    repository.load()
+    service = OcrService(config, repository=repository)
     for path in png_files:
         with Image.open(path) as img:
             raw_text, normalized = service.recognize_image(img)

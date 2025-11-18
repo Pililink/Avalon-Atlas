@@ -21,6 +21,7 @@ class HotkeyService:
         self._hotkey_handle: Optional[int] = None
         self._callback: Optional[Callable[[str], None]] = None
         self._lock = threading.Lock()
+        self._current_combo: Optional[str] = None
 
     def set_callback(self, callback: Callable[[str], None]) -> None:
         self._callback = callback
@@ -30,15 +31,30 @@ class HotkeyService:
             if self._hotkey_handle is not None:
                 return
             combo = self.config.hotkey
-            logger.info("注册热键 %s", combo)
-            self._hotkey_handle = keyboard.add_hotkey(combo, self._handle_trigger)
+            self._register_hotkey(combo)
 
     def stop(self) -> None:
         with self._lock:
             if self._hotkey_handle is not None:
                 keyboard.remove_hotkey(self._hotkey_handle)
                 self._hotkey_handle = None
+            self._current_combo = None
         self._executor.shutdown(wait=False, cancel_futures=True)
+
+    def update_hotkey(self, combo: str) -> None:
+        with self._lock:
+            if combo == self._current_combo and self._hotkey_handle is not None:
+                return
+            if self._hotkey_handle is not None:
+                keyboard.remove_hotkey(self._hotkey_handle)
+                self._hotkey_handle = None
+            self._register_hotkey(combo)
+
+    def _register_hotkey(self, combo: str) -> None:
+        logger.info("注册热键 %s", combo)
+        handle = keyboard.add_hotkey(combo, self._handle_trigger)
+        self._hotkey_handle = handle
+        self._current_combo = combo
 
     def _handle_trigger(self) -> None:
         self._executor.submit(self._run_ocr)

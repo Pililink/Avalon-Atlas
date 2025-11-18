@@ -26,7 +26,7 @@ def main() -> int:
     search_service = MapSearchService(repository)
     search_service.refresh()
 
-    ocr_service = OcrService(config)
+    ocr_service = OcrService(config, repository=repository)
     hotkey_service = HotkeyService(config, ocr_service)
     resource_loader = ResourceLoader(config.static_root)
 
