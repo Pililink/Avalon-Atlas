@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 class OCRRegion(BaseModel):
     width: int = Field(600, ge=50, description="OCR 截图区域宽度，单位像素")
-    height: int = Field(60, ge=40, description="OCR 截图区域高度，单位像素")
+    height: int = Field(80, ge=40, description="OCR 截图区域高度，单位像素")
     vertical_offset: int = Field(
         0,
         description="鼠标与截图矩形底部之间的额外间距，正值意味着进一步向上偏移",
