@@ -69,8 +69,9 @@ jobs:
       - name: ✅ 验证构建产物
         shell: pwsh
         run: |
+          $version = "${{ github.ref_name }}" -replace '^v', ''
           $exePath = "dist/AvalonAtlas/AvalonAtlas.exe"
-          $zipPath = "dist/AvalonAtlas-v${{ github.ref_name }}-portable.zip"
+          $zipPath = "dist/AvalonAtlas-v$version-portable.zip"
 
           if (-not (Test-Path $exePath)) {
             Write-Error "构建失败：未找到可执行文件"
@@ -84,14 +85,17 @@ jobs:
           if (Test-Path $zipPath) {
             $zipSize = (Get-Item $zipPath).Length / 1MB
             Write-Host "✓ 便携版压缩包: $($zipSize.ToString('F2')) MB"
+          } else {
+            Write-Error "未找到便携版压缩包: $zipPath"
+            exit 1
           }
 
-          # 列出必需文件
+          # 列出必需文件（PyInstaller onedir 模式下文件在 _internal 目录）
           Write-Host "`n必需文件检查:"
           $requiredPaths = @(
-            "dist/AvalonAtlas/static/data/maps.json",
-            "dist/AvalonAtlas/static/maps",
-            "dist/AvalonAtlas/static/assets"
+            "dist/AvalonAtlas/_internal/static/data/maps.json",
+            "dist/AvalonAtlas/_internal/static/maps",
+            "dist/AvalonAtlas/_internal/static/assets"
           )
 
           foreach ($path in $requiredPaths) {
@@ -108,7 +112,8 @@ jobs:
         id: release_notes
         shell: pwsh
         run: |
-          $version = "${{ github.ref_name }}"
+          $tag = "${{ github.ref_name }}"
+          $version = $tag -replace '^v', ''
 
           # 从 CHANGELOG.md 提取当前版本的变更内容
           $changelogPath = "CHANGELOG.md"
@@ -123,7 +128,7 @@ jobs:
               $notes = "请查看 [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) 了解详细变更。"
             }
           } else {
-            $notes = "Avalon Atlas $version 发布版本"
+            $notes = "Avalon Atlas $tag 发布版本"
           }
 
           # 添加下载说明
@@ -135,7 +140,7 @@ jobs:
           ## 📥 下载说明
 
           ### 便携版（推荐）
-          下载 ``AvalonAtlas-$version-portable.zip``，解压后双击 ``AvalonAtlas.exe`` 即可运行。
+          下载 ``AvalonAtlas-v$version-portable.zip``，解压后双击 ``AvalonAtlas.exe`` 即可运行。
 
           **系统要求**：
           - Windows 10/11 (64位)
