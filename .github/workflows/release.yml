@@ -1,0 +1,191 @@
+name: Release
+
+# 触发条件：推送以 'v' 开头的标签时（如 v1.0.0）
+on:
+  push:
+    tags:
+      - 'v*'
+
+# 环境变量
+env:
+  PYTHON_VERSION: '3.12'
+
+jobs:
+  build-and-release:
+    name: 构建并发布 Windows 便携版
+    runs-on: windows-latest
+
+    permissions:
+      contents: write  # 需要写权限来创建 Release
+
+    steps:
+      # 1. 检出代码
+      - name: 📥 检出代码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 获取完整历史，用于版本信息
+
+      # 2. 设置 Python 环境
+      - name: 🐍 设置 Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'  # 缓存 pip 依赖
+
+      # 3. 安装依赖
+      - name: 📦 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt || pip install pydantic pyside6 rapidfuzz pillow pytesseract mss keyboard pynput numpy rapidocr-onnxruntime pyinstaller
+
+      # 4. 验证版本号一致性
+      - name: 🔍 验证版本号
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $version = $tag -replace '^v', ''
+
+          # 读取 atlas/version.py 中的版本号
+          $versionFile = Get-Content "atlas/version.py" -Raw
+          if ($versionFile -match '__version__\s*=\s*[''"]([^''"]+)[''"]') {
+            $codeVersion = $matches[1]
+            Write-Host "Git 标签版本: $version"
+            Write-Host "代码中版本: $codeVersion"
+
+            if ($version -ne $codeVersion) {
+              Write-Error "版本号不一致！请确保 git tag 与 atlas/version.py 中的版本号匹配。"
+              exit 1
+            }
+          } else {
+            Write-Error "无法从 atlas/version.py 读取版本号"
+            exit 1
+          }
+
+      # 5. 构建可执行文件
+      - name: 🔨 构建可执行文件
+        run: python build.py
+
+      # 6. 检查构建产物
+      - name: ✅ 验证构建产物
+        shell: pwsh
+        run: |
+          $exePath = "dist/AvalonAtlas/AvalonAtlas.exe"
+          $zipPath = "dist/AvalonAtlas-v${{ github.ref_name }}-portable.zip"
+
+          if (-not (Test-Path $exePath)) {
+            Write-Error "构建失败：未找到可执行文件"
+            exit 1
+          }
+
+          # 显示文件信息
+          $exeSize = (Get-Item $exePath).Length / 1MB
+          Write-Host "✓ 可执行文件大小: $($exeSize.ToString('F2')) MB"
+
+          if (Test-Path $zipPath) {
+            $zipSize = (Get-Item $zipPath).Length / 1MB
+            Write-Host "✓ 便携版压缩包: $($zipSize.ToString('F2')) MB"
+          }
+
+          # 列出必需文件
+          Write-Host "`n必需文件检查:"
+          $requiredPaths = @(
+            "dist/AvalonAtlas/static/data/maps.json",
+            "dist/AvalonAtlas/static/maps",
+            "dist/AvalonAtlas/static/assets"
+          )
+
+          foreach ($path in $requiredPaths) {
+            if (Test-Path $path) {
+              Write-Host "  ✓ $path"
+            } else {
+              Write-Error "  ✗ 缺失: $path"
+              exit 1
+            }
+          }
+
+      # 7. 准备发布说明
+      - name: 📝 生成发布说明
+        id: release_notes
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}"
+
+          # 从 CHANGELOG.md 提取当前版本的变更内容
+          $changelogPath = "CHANGELOG.md"
+          if (Test-Path $changelogPath) {
+            $content = Get-Content $changelogPath -Raw
+
+            # 提取当前版本部分（从 [version] 到下一个版本标题）
+            $pattern = "(?s)## \[$version.*?\](.*?)(?=## \[|$)"
+            if ($content -match $pattern) {
+              $notes = $matches[1].Trim()
+            } else {
+              $notes = "请查看 [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) 了解详细变更。"
+            }
+          } else {
+            $notes = "Avalon Atlas $version 发布版本"
+          }
+
+          # 添加下载说明
+          $fullNotes = @"
+          $notes
+
+          ---
+
+          ## 📥 下载说明
+
+          ### 便携版（推荐）
+          下载 ``AvalonAtlas-$version-portable.zip``，解压后双击 ``AvalonAtlas.exe`` 即可运行。
+
+          **系统要求**：
+          - Windows 10/11 (64位)
+          - 无需安装 Python 或其他依赖
+          - 约 500MB 磁盘空间
+
+          ### 使用指南
+
+          详细使用说明请参考 [README.md](https://github.com/${{ github.repository }}/blob/main/README.md)
+
+          ### 反馈问题
+
+          如遇到问题，请在 [Issues](https://github.com/${{ github.repository }}/issues) 提交问题报告。
+          "@
+
+          # 保存到文件供后续步骤使用
+          $fullNotes | Out-File -FilePath "release_notes.md" -Encoding utf8
+
+          Write-Host "发布说明已生成"
+
+      # 8. 创建 GitHub Release
+      - name: 🚀 创建 GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Avalon Atlas ${{ github.ref_name }}
+          body_path: release_notes.md
+          draft: false
+          prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') || contains(github.ref_name, 'rc') }}
+          files: |
+            dist/AvalonAtlas-*.zip
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 9. 上传构建产物（供调试）
+      - name: 📤 上传构建产物
+        uses: actions/upload-artifact@v4
+        if: always()  # 即使失败也上传，便于调试
+        with:
+          name: AvalonAtlas-${{ github.ref_name }}-build
+          path: |
+            dist/AvalonAtlas/
+            dist/*.zip
+          retention-days: 30
+          compression-level: 9
+
+      # 10. 发布成功通知
+      - name: ✅ 发布完成
+        if: success()
+        run: |
+          echo "🎉 发布成功！"
+          echo "版本: ${{ github.ref_name }}"
+          echo "下载链接: https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}"

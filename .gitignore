@@ -30,3 +30,9 @@ hooks
 debug
 config.json
 uv.lock
+
+# 发布相关临时文件
+release_notes.md
+*.spec.bak
+*.manifest
+*.res
