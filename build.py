@@ -5,15 +5,42 @@ from __future__ import annotations
 import shutil
 import subprocess
 import sys
-from pathlib import Path
 import os
+from pathlib import Path
+
+# 设置 UTF-8 编码（修复 GitHub Actions Windows 环境的编码问题）
+if sys.platform == 'win32':
+    import locale
+    # 设置控制台编码为 UTF-8
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8')
+    if hasattr(sys.stderr, 'reconfigure'):
+        sys.stderr.reconfigure(encoding='utf-8')
+    # 设置环境变量
+    os.environ['PYTHONIOENCODING'] = 'utf-8'
+
+
+def safe_print(*args, **kwargs):
+    """安全打印函数，处理编码错误"""
+    try:
+        print(*args, **kwargs)
+    except UnicodeEncodeError:
+        # 如果 UTF-8 失败，移除所有非 ASCII 字符
+        safe_args = []
+        for arg in args:
+            if isinstance(arg, str):
+                # 保留 ASCII 字符，替换其他字符
+                safe_args.append(arg.encode('ascii', 'replace').decode('ascii'))
+            else:
+                safe_args.append(str(arg))
+        print(*safe_args, **kwargs)
 
 
 def get_version() -> str:
     """从 atlas/version.py 读取版本号"""
     version_file = Path(__file__).parent / "atlas" / "version.py"
     if not version_file.exists():
-        print("⚠️  未找到 version.py，使用默认版本 0.0.0")
+        safe_print("⚠️  未找到 version.py，使用默认版本 0.0.0")
         return "0.0.0"
 
     namespace = {}
@@ -23,13 +50,13 @@ def get_version() -> str:
 
 def clean_build() -> None:
     """清理旧的构建产物"""
-    print("🧹 清理旧构建...")
+    safe_print("🧹 清理旧构建...")
     for path_str in ["build", "dist"]:
         path = Path(path_str)
         if path.exists():
             shutil.rmtree(path)
-            print(f"   ✓ 已删除 {path_str}/")
-    print()
+            safe_print(f"   ✓ 已删除 {path_str}/")
+    safe_print()
 
 
 def build_executable() -> int:
@@ -60,22 +87,22 @@ def build_executable() -> int:
     env.setdefault("PYINSTALLER_CONFIG_DIR", str(project_root / "build"))
     env.setdefault("PYINSTALLER_BOOTLOADER_IGNORE_SIGNALS", "True")
 
-    print("🔨 开始构建可执行文件...")
-    print(f"   📌 图标: {icon_path}")
-    print(f"   📌 模式: 无控制台窗口 (windowed)")
+    safe_print("🔨 开始构建可执行文件...")
+    safe_print(f"   📌 图标: {icon_path}")
+    safe_print(f"   📌 模式: 无控制台窗口 (windowed)")
     process = subprocess.run(cmd, cwd=project_root, env=env)
 
     if process.returncode == 0:
-        print("   ✓ 构建成功\n")
+        safe_print("   ✓ 构建成功\n")
     else:
-        print("   ✗ 构建失败\n")
+        safe_print("   ✗ 构建失败\n")
 
     return process.returncode
 
 
 def verify_build() -> bool:
     """验证构建产物是否完整"""
-    print("🔍 验证构建产物...")
+    safe_print("🔍 验证构建产物...")
 
     dist_dir = Path("dist/AvalonAtlas")
     exe_path = dist_dir / "AvalonAtlas.exe"
@@ -91,33 +118,33 @@ def verify_build() -> bool:
     all_ok = True
     for file_path in required_files:
         if file_path.exists():
-            print(f"   ✓ {file_path.relative_to(dist_dir)}")
+            safe_print(f"   ✓ {file_path.relative_to(dist_dir)}")
         else:
-            print(f"   ✗ 缺失: {file_path.relative_to(dist_dir)}")
+            safe_print(f"   ✗ 缺失: {file_path.relative_to(dist_dir)}")
             all_ok = False
 
     # 检查可执行文件大小
     if exe_path.exists():
         size_mb = exe_path.stat().st_size / 1024 / 1024
-        print(f"   ℹ️  可执行文件大小: {size_mb:.1f} MB")
+        safe_print(f"   ℹ️  可执行文件大小: {size_mb:.1f} MB")
 
     if all_ok:
-        print("   ✅ 验证通过\n")
+        safe_print("   ✅ 验证通过\n")
     else:
-        print("   ❌ 验证失败\n")
+        safe_print("   ❌ 验证失败\n")
 
     return all_ok
 
 
 def create_portable_zip(version: str) -> None:
     """创建便携版 ZIP 压缩包"""
-    print("📦 打包便携版...")
+    safe_print("📦 打包便携版...")
 
     dist_dir = Path("dist/AvalonAtlas")
     output_zip = Path(f"dist/AvalonAtlas-v{version}-portable")
 
     if not dist_dir.exists():
-        print("   ✗ dist/AvalonAtlas 目录不存在\n")
+        safe_print("   ✗ dist/AvalonAtlas 目录不存在\n")
         return
 
     try:
@@ -131,39 +158,39 @@ def create_portable_zip(version: str) -> None:
 
         zip_file = output_zip.with_suffix(".zip")
         size_mb = zip_file.stat().st_size / 1024 / 1024
-        print(f"   ✓ 已创建: {zip_file.name} ({size_mb:.1f} MB)\n")
+        safe_print(f"   ✓ 已创建: {zip_file.name} ({size_mb:.1f} MB)\n")
     except Exception as e:
-        print(f"   ✗ 打包失败: {e}\n")
+        safe_print(f"   ✗ 打包失败: {e}\n")
 
 
 def show_summary(version: str) -> None:
     """显示构建摘要"""
-    print("=" * 60)
-    print(f"🎉 Avalon Atlas v{version} 构建完成!")
-    print("=" * 60)
-    print("\n📂 输出文件:")
-    print(f"   - 可执行文件: dist/AvalonAtlas/AvalonAtlas.exe")
+    safe_print("=" * 60)
+    safe_print(f"🎉 Avalon Atlas v{version} 构建完成!")
+    safe_print("=" * 60)
+    safe_print("\n📂 输出文件:")
+    safe_print(f"   - 可执行文件: dist/AvalonAtlas/AvalonAtlas.exe")
 
     zip_file = Path(f"dist/AvalonAtlas-v{version}-portable.zip")
     if zip_file.exists():
-        print(f"   - 便携版包: {zip_file.name}")
+        safe_print(f"   - 便携版包: {zip_file.name}")
 
-    print("\n📝 下一步:")
-    print("   1. 测试运行 dist/AvalonAtlas/AvalonAtlas.exe")
-    print("   2. 检查热键和 OCR 功能是否正常")
-    print(f"   3. 解压 {zip_file.name} 测试便携版")
-    print()
+    safe_print("\n📝 下一步:")
+    safe_print("   1. 测试运行 dist/AvalonAtlas/AvalonAtlas.exe")
+    safe_print("   2. 检查热键和 OCR 功能是否正常")
+    safe_print(f"   3. 解压 {zip_file.name} 测试便携版")
+    safe_print()
 
 
 def main() -> int:
     """主构建流程"""
     version = get_version()
 
-    print()
-    print("=" * 60)
-    print(f"🚀 Avalon Atlas v{version} 构建脚本")
-    print("=" * 60)
-    print()
+    safe_print()
+    safe_print("=" * 60)
+    safe_print(f"🚀 Avalon Atlas v{version} 构建脚本")
+    safe_print("=" * 60)
+    safe_print()
 
     # 1. 清理
     clean_build()
@@ -171,12 +198,12 @@ def main() -> int:
     # 2. 构建
     ret = build_executable()
     if ret != 0:
-        print("❌ 构建失败，退出")
+        safe_print("❌ 构建失败，退出")
         return ret
 
     # 3. 验证
     if not verify_build():
-        print("⚠️  验证失败，但仍继续打包")
+        safe_print("⚠️  验证失败，但仍继续打包")
 
     # 4. 打包便携版
     create_portable_zip(version)
@@ -191,10 +218,10 @@ if __name__ == "__main__":
     try:
         exit_code = main()
     except KeyboardInterrupt:
-        print("\n\n⚠️  构建已取消")
+        safe_print("\n\n⚠️  构建已取消")
         exit_code = 130
     except Exception as e:
-        print(f"\n\n❌ 构建过程出现错误: {e}")
+        safe_print(f"\n\n❌ 构建过程出现错误: {e}")
         import traceback
         traceback.print_exc()
         exit_code = 1

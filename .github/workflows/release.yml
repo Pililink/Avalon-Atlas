@@ -63,7 +63,13 @@ jobs:
 
       # 5. 构建可执行文件
       - name: 🔨 构建可执行文件
-        run: python build.py
+        env:
+          PYTHONIOENCODING: utf-8
+          PYTHONUTF8: 1
+        run: |
+          # 设置控制台代码页为 UTF-8
+          chcp 65001
+          python build.py
 
       # 6. 检查构建产物
       - name: ✅ 验证构建产物
