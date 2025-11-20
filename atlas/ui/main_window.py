@@ -9,10 +9,10 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from ..config import AppConfig, save_config
 from ..data.models import MapRecord
+from ..logger import get_logger
 from ..services.hotkey_service import HotkeyService
 from ..services.ocr_service import OcrService
 from ..services.search_service import MapSearchService, SearchResult
-from ..logger import get_logger
 from .resource_loader import ResourceLoader
 from .widgets import MapListItemWidget
 
@@ -23,7 +23,12 @@ class _HighlightDelegate(QtWidgets.QStyledItemDelegate):
     def __init__(self, parent: Optional[QtWidgets.QWidget] = None):
         super().__init__(parent)
 
-    def paint(self, painter: QtGui.QPainter, option: QtWidgets.QStyleOptionViewItem, index: QtCore.QModelIndex) -> None:
+    def paint(
+        self,
+        painter: QtGui.QPainter,
+        option: QtWidgets.QStyleOptionViewItem,
+        index: QtCore.QModelIndex,
+    ) -> None:
         opt = QtWidgets.QStyleOptionViewItem(option)
         self.initStyleOption(opt, index)
         highlight_html = index.data(QtCore.Qt.ItemDataRole.UserRole + 1)
@@ -31,13 +36,19 @@ class _HighlightDelegate(QtWidgets.QStyledItemDelegate):
         style = opt.widget.style() if opt.widget else QtWidgets.QApplication.style()
         painter.save()
         opt.text = ""
-        style.drawControl(QtWidgets.QStyle.ControlElement.CE_ItemViewItem, opt, painter, opt.widget)
+        style.drawControl(
+            QtWidgets.QStyle.ControlElement.CE_ItemViewItem, opt, painter, opt.widget
+        )
         if highlight_html:
-            text_rect = style.subElementRect(QtWidgets.QStyle.SubElement.SE_ItemViewItemText, opt, opt.widget)
+            text_rect = style.subElementRect(
+                QtWidgets.QStyle.SubElement.SE_ItemViewItemText, opt, opt.widget
+            )
             painter.translate(text_rect.topLeft())
             doc = QtGui.QTextDocument()
             doc.setDefaultFont(opt.font)
-            doc.setDefaultStyleSheet(f"body {{ color: {opt.palette.color(QtGui.QPalette.ColorRole.Text).name()}; }}")
+            doc.setDefaultStyleSheet(
+                f"body {{ color: {opt.palette.color(QtGui.QPalette.ColorRole.Text).name()}; }}"
+            )
             doc.setHtml(f"<body>{highlight_html}</body>")
             clip = QtCore.QRectF(0, 0, text_rect.width(), text_rect.height())
             doc.drawContents(painter, clip)
@@ -94,20 +105,7 @@ class MainWindow(QtWidgets.QMainWindow):
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(8)
 
-        self.hotkey_input = QtWidgets.QLineEdit(self.config.hotkey)
-        self.hotkey_input.setPlaceholderText("请点击下方按钮录制热键")
-        self.hotkey_input.setReadOnly(True)
-        self.hotkey_record_button = QtWidgets.QPushButton("录制热键")
-        self.hotkey_button = QtWidgets.QPushButton("保存热键")
-        self.help_button = QtWidgets.QPushButton("使用说明")
-
-        hotkey_layout = QtWidgets.QHBoxLayout()
-        hotkey_layout.addWidget(QtWidgets.QLabel("热键："))
-        hotkey_layout.addWidget(self.hotkey_input)
-        hotkey_layout.addWidget(self.hotkey_record_button)
-        hotkey_layout.addWidget(self.hotkey_button)
-        hotkey_layout.addWidget(self.help_button)
-
+        # === 搜索区域 ===
         self.search_input = QtWidgets.QLineEdit()
         self._update_search_placeholder()
         self.search_button = QtWidgets.QPushButton("查询")
@@ -120,14 +118,20 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.selected_label = QtWidgets.QLabel("已选 0 条")
 
+        # === 结果列表 ===
         self.selected_list = QtWidgets.QListWidget()
-        self.selected_list.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
+        self.selected_list.setSelectionMode(
+            QtWidgets.QAbstractItemView.SelectionMode.SingleSelection
+        )
         self.selected_list.setMinimumHeight(480)
         self.selected_list.setMouseTracking(True)
 
+        # === 弹出搜索列表 ===
         self._popup_list = QtWidgets.QListWidget()
         self._popup_list.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
-        self._popup_list.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
+        self._popup_list.setSelectionMode(
+            QtWidgets.QAbstractItemView.SelectionMode.SingleSelection
+        )
         self._popup_delegate = _HighlightDelegate(self._popup_list)
         self._popup_list.setItemDelegate(self._popup_delegate)
         self._popup_container = QtWidgets.QFrame(self)
@@ -135,26 +139,50 @@ class MainWindow(QtWidgets.QMainWindow):
         self._popup_container.setWindowFlags(
             QtCore.Qt.WindowType.ToolTip | QtCore.Qt.WindowType.FramelessWindowHint
         )
-        self._popup_container.setAttribute(QtCore.Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
-        self._popup_container.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self._popup_container.setAttribute(
+            QtCore.Qt.WidgetAttribute.WA_ShowWithoutActivating, True
+        )
+        self._popup_container.setAttribute(
+            QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True
+        )
         popup_layout = QtWidgets.QVBoxLayout(self._popup_container)
         popup_layout.setContentsMargins(0, 0, 0, 0)
         popup_layout.addWidget(self._popup_list)
         self._popup_container.hide()
 
-        layout.addLayout(hotkey_layout)
+        # === 热键配置区域 ===
+        self.hotkey_input = QtWidgets.QLineEdit(self.config.hotkey)
+        self.hotkey_input.setPlaceholderText("请点击下方按钮录制热键")
+        self.hotkey_input.setReadOnly(True)
+        self.hotkey_record_button = QtWidgets.QPushButton("录制热键")
+        self.hotkey_button = QtWidgets.QPushButton("保存热键")
+        self.help_button = QtWidgets.QPushButton("使用说明")
+
+        hotkey_layout = QtWidgets.QHBoxLayout()
+        hotkey_layout.addWidget(QtWidgets.QLabel("热键配置："))
+        hotkey_layout.addWidget(self.hotkey_input)
+        hotkey_layout.addWidget(self.hotkey_record_button)
+        hotkey_layout.addWidget(self.hotkey_button)
+        hotkey_layout.addWidget(self.help_button)
+
+        # === 组装布局 ===
         layout.addLayout(controls)
         layout.addWidget(self.selected_label)
         layout.addWidget(self.selected_list)
+        layout.addLayout(hotkey_layout)
 
         self.setCentralWidget(central)
-        self.setMinimumWidth(380)
-        self.resize(460, 760)
+        self.setMinimumWidth(480)
+        self.resize(480, 760)
         self._preview_label = QtWidgets.QLabel(self)
         self._preview_label.setWindowFlags(
-            QtCore.Qt.WindowType.ToolTip | QtCore.Qt.WindowType.FramelessWindowHint | QtCore.Qt.WindowType.NoDropShadowWindowHint
+            QtCore.Qt.WindowType.ToolTip
+            | QtCore.Qt.WindowType.FramelessWindowHint
+            | QtCore.Qt.WindowType.NoDropShadowWindowHint
         )
-        self._preview_label.setAttribute(QtCore.Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
+        self._preview_label.setAttribute(
+            QtCore.Qt.WidgetAttribute.WA_ShowWithoutActivating, True
+        )
         self._preview_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self._preview_label.setStyleSheet(
             "background-color: #202020; border: 1px solid #555; padding: 6px; border-radius: 4px;"
@@ -174,13 +202,47 @@ class MainWindow(QtWidgets.QMainWindow):
         self._popup_list.itemActivated.connect(self._handle_popup_selection)
 
     def _show_usage_help(self) -> None:
-        message = "\n".join([
-            "1. 设置全局热键后切回游戏，按下该热键触发 OCR。",
-            "2. 将鼠标停在地图名称附近，等待识别完成。",
-            "3. 成功识别的地图会自动加入列表，可继续在搜索框筛选。",
-            "4. 双击列表项可复制名称，点击清空可重新选择。"
-        ])
-        QtWidgets.QMessageBox.information(self, "使用说明", message)
+        """显示使用说明对话框"""
+        help_text = """
+<h2>Avalon Atlas 使用说明</h2>
+
+<h3>📝 手动搜索</h3>
+<ol>
+<li>在搜索框输入地图名称，支持模糊匹配和部分拼写</li>
+<li>点击候选项即可添加到已选列表</li>
+<li>悬停候选可预览完整地图，双击可复制名称</li>
+</ol>
+
+<h3>⌨️ 热键 OCR</h3>
+<ol>
+<li>点击"录制热键"，按下目标组合键，再点"保存热键"完成设置</li>
+<li>在游戏中，将鼠标移动到地图图标上，等待地图名称显示</li>
+<li>地图名称出现后，按下热键即可自动识别并添加到列表</li>
+</ol>
+
+<h3>💡 使用技巧</h3>
+<ul>
+<li>搜索支持容错输入（如 c4s0s 会匹配 casos）</li>
+<li>OCR 识别时，鼠标应停在地图名称正下方以获得最佳效果</li>
+<li>OCR 失败时可打开调试模式查看截图与识别文本</li>
+<li>推荐热键：Ctrl+Shift+Q 或 Ctrl+Alt+M</li>
+<li>配置文件储存在程序目录的 config.json，方便备份同步</li>
+</ul>
+
+<hr>
+<p><b>GitHub 仓库：</b><a href="https://github.com/Pililink/Avalon-Atlas">https://github.com/Pililink/Avalon-Atlas</a></p>
+<p><b>问题反馈：</b>欢迎在 GitHub Issues 提交建议或错误报告</p>
+        """
+
+        msg_box = QtWidgets.QMessageBox(self)
+        msg_box.setWindowTitle("使用说明")
+        msg_box.setTextFormat(QtCore.Qt.TextFormat.RichText)
+        msg_box.setText(help_text)
+        msg_box.setStandardButtons(QtWidgets.QMessageBox.StandardButton.Ok)
+        msg_box.setTextInteractionFlags(
+            QtCore.Qt.TextInteractionFlag.TextBrowserInteraction
+        )
+        msg_box.exec()
 
     def _handle_hotkey_text(self, text: str) -> None:
         normalized = text.strip()
@@ -274,8 +336,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.statusBar().showMessage(f"录制热键失败: {message}", 5000)
 
     def _update_search_placeholder(self) -> None:
-        placeholder_hotkey = self.config.hotkey.upper().replace(" ", "") if self.config.hotkey else "CTRL+ALT+M"
-        self.search_input.setPlaceholderText(f"输入地图名称或使用热键 {placeholder_hotkey} OCR")
+        placeholder_hotkey = (
+            self.config.hotkey.upper().replace(" ", "")
+            if self.config.hotkey
+            else "CTRL+ALT+M"
+        )
+        self.search_input.setPlaceholderText(
+            f"输入地图名称或使用热键 {placeholder_hotkey} OCR"
+        )
 
     def _add_map_from_hotkey(self, query: str) -> None:
         results = self.search_service.search(query)
@@ -317,11 +385,17 @@ class MainWindow(QtWidgets.QMainWindow):
         display_results = self.results[:20]
         for result in display_results:
             text = f"{result.record.name} ({result.record.tier})"
-            highlighted = self._build_highlighted_text(result, result.record.name, result.record.tier)
+            highlighted = self._build_highlighted_text(
+                result, result.record.name, result.record.tier
+            )
             item = QtWidgets.QListWidgetItem(text)
-            thumb = self.resource_loader.map_thumbnail(result.record.slug, size=(64, 36))
+            thumb = self.resource_loader.map_thumbnail(
+                result.record.slug, size=(64, 36)
+            )
             item.setIcon(QtGui.QIcon(thumb))
-            item.setToolTip(f"资源 {result.record.resources.rock}/{result.record.resources.wood}/{result.record.resources.ore}")
+            item.setToolTip(
+                f"资源 {result.record.resources.rock}/{result.record.resources.wood}/{result.record.resources.ore}"
+            )
             item.setData(QtCore.Qt.ItemDataRole.UserRole, result)
             item.setData(QtCore.Qt.ItemDataRole.UserRole + 1, highlighted)
             self._popup_list.addItem(item)
@@ -331,18 +405,23 @@ class MainWindow(QtWidgets.QMainWindow):
         self._popup_container.raise_()
         self.search_input.setFocus()
 
-    def _build_highlighted_text(self, result: SearchResult, name: str, tier: str) -> str:
+    def _build_highlighted_text(
+        self, result: SearchResult, name: str, tier: str
+    ) -> str:
         query = (self._last_query or "").strip()
         text_color = self.palette().color(QtGui.QPalette.ColorRole.Text).name()
         highlight_style = "color: #d33; font-weight: 600;"
         normal_style = f"color: {text_color};"
 
         def wrap(s: str, style: str) -> str:
-            return f"<span style=\"{style}\">{html.escape(s)}</span>"
+            return f'<span style="{style}">{html.escape(s)}</span>'
 
         if result.positions:
             pos_set = {p for p in result.positions if 0 <= p < len(name)}
-            parts = [wrap(ch, highlight_style if idx in pos_set else normal_style) for idx, ch in enumerate(name)]
+            parts = [
+                wrap(ch, highlight_style if idx in pos_set else normal_style)
+                for idx, ch in enumerate(name)
+            ]
             highlighted_name = "".join(parts)
         elif query:
             lower_name = name.lower()
@@ -401,7 +480,9 @@ class MainWindow(QtWidgets.QMainWindow):
         if existing_item:
             row = self.selected_list.row(existing_item)
             self.selected_list.setCurrentRow(row)
-            self.selected_list.scrollToItem(existing_item, QtWidgets.QAbstractItemView.ScrollHint.PositionAtCenter)
+            self.selected_list.scrollToItem(
+                existing_item, QtWidgets.QAbstractItemView.ScrollHint.PositionAtCenter
+            )
             return
 
         item = QtWidgets.QListWidgetItem()
@@ -444,11 +525,15 @@ class MainWindow(QtWidgets.QMainWindow):
             self._popup_container.hide()
             return
 
-        row_height = self._popup_list.sizeHintForRow(0) if self._popup_list.count() else 24
+        row_height = (
+            self._popup_list.sizeHintForRow(0) if self._popup_list.count() else 24
+        )
         height = min(320, row_height * display_count + 8)
         width = self.search_input.width()
         self._popup_container.resize(width, height)
-        global_pos = self.search_input.mapToGlobal(QtCore.QPoint(0, self.search_input.height()))
+        global_pos = self.search_input.mapToGlobal(
+            QtCore.QPoint(0, self.search_input.height())
+        )
         self._popup_container.move(global_pos)
 
     def moveEvent(self, event: QtGui.QMoveEvent) -> None:
@@ -464,13 +549,21 @@ class MainWindow(QtWidgets.QMainWindow):
         self._reposition_preview()
 
     def _reposition_preview(self) -> None:
-        if not self._preview_label or not self._preview_label.isVisible() or self._preview_pixmap is None:
+        if (
+            not self._preview_label
+            or not self._preview_label.isVisible()
+            or self._preview_pixmap is None
+        ):
             return
 
         size = self._preview_pixmap.size()
-        available = (self.screen() or QtGui.QGuiApplication.primaryScreen()).availableGeometry()
+        available = (
+            self.screen() or QtGui.QGuiApplication.primaryScreen()
+        ).availableGeometry()
         list_top_left = self.selected_list.mapToGlobal(QtCore.QPoint(0, 0))
-        list_top_right = self.selected_list.mapToGlobal(QtCore.QPoint(self.selected_list.width(), 0))
+        list_top_right = self.selected_list.mapToGlobal(
+            QtCore.QPoint(self.selected_list.width(), 0)
+        )
 
         preferred = QtCore.QPoint(list_top_right.x() + 12, list_top_right.y())
         pos = QtCore.QPoint(preferred)
@@ -481,9 +574,16 @@ class MainWindow(QtWidgets.QMainWindow):
             if candidate_left >= available.left():
                 pos.setX(candidate_left)
             else:
-                pos.setX(max(available.left() + 8, available.right() - size.width() - 8))
+                pos.setX(
+                    max(available.left() + 8, available.right() - size.width() - 8)
+                )
 
         # Clamp vertical position within screen.
-        pos.setY(max(available.top() + 8, min(list_top_left.y(), available.bottom() - size.height() - 8)))
+        pos.setY(
+            max(
+                available.top() + 8,
+                min(list_top_left.y(), available.bottom() - size.height() - 8),
+            )
+        )
 
         self._preview_label.move(pos)
