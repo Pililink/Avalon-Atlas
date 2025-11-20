@@ -35,6 +35,7 @@ def clean_build() -> None:
 def build_executable() -> int:
     """构建可执行文件"""
     project_root = Path(__file__).parent
+    icon_path = project_root / "static" / "assets" / "icon.ico"
 
     cmd = [
         sys.executable,
@@ -45,6 +46,9 @@ def build_executable() -> int:
         "--name",
         "AvalonAtlas",
         "--onedir",
+        "--windowed",  # 关闭控制台窗口
+        "--icon",
+        str(icon_path),  # 设置应用图标
         "--add-data",
         f"static{os.pathsep}static",
         "--collect-all",
@@ -57,6 +61,8 @@ def build_executable() -> int:
     env.setdefault("PYINSTALLER_BOOTLOADER_IGNORE_SIGNALS", "True")
 
     print("🔨 开始构建可执行文件...")
+    print(f"   📌 图标: {icon_path}")
+    print(f"   📌 模式: 无控制台窗口 (windowed)")
     process = subprocess.run(cmd, cwd=project_root, env=env)
 
     if process.returncode == 0:
@@ -73,20 +79,21 @@ def verify_build() -> bool:
 
     dist_dir = Path("dist/AvalonAtlas")
     exe_path = dist_dir / "AvalonAtlas.exe"
+    internal_dir = dist_dir / "_internal"
 
     required_files = [
         exe_path,
-        dist_dir / "static" / "data" / "maps.json",
-        dist_dir / "static" / "maps",
-        dist_dir / "static" / "assets",
+        internal_dir / "static" / "data" / "maps.json",
+        internal_dir / "static" / "maps",
+        internal_dir / "static" / "assets",
     ]
 
     all_ok = True
     for file_path in required_files:
         if file_path.exists():
-            print(f"   ✓ {file_path.relative_to('dist/AvalonAtlas')}")
+            print(f"   ✓ {file_path.relative_to(dist_dir)}")
         else:
-            print(f"   ✗ 缺失: {file_path.relative_to('dist/AvalonAtlas')}")
+            print(f"   ✗ 缺失: {file_path.relative_to(dist_dir)}")
             all_ok = False
 
     # 检查可执行文件大小

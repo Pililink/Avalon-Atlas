@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -10,6 +11,18 @@ from pydantic import BaseModel, Field, ValidationError
 from . import PACKAGE_ROOT
 
 logger = logging.getLogger(__name__)
+
+# 根据环境确定静态资源根目录
+if hasattr(sys, '_MEIPASS'):
+    # PyInstaller 环境：PACKAGE_ROOT 已经指向 _MEIPASS
+    STATIC_ROOT = PACKAGE_ROOT / "static"
+    DATA_PATH = STATIC_ROOT / "data" / "maps.json"
+    DEBUG_DIR = Path.cwd() / "debug"  # 在当前工作目录创建 debug 文件夹
+else:
+    # 开发环境：PACKAGE_ROOT 指向 atlas/ 目录
+    STATIC_ROOT = PACKAGE_ROOT.parent / "static"
+    DATA_PATH = STATIC_ROOT / "data" / "maps.json"
+    DEBUG_DIR = PACKAGE_ROOT.parent / "debug"
 
 
 class OCRRegion(BaseModel):
@@ -23,17 +36,17 @@ class OCRRegion(BaseModel):
 
 class AppConfig(BaseModel):
     maps_data_path: Path = Field(
-        default=PACKAGE_ROOT.parent / "static" / "data" / "maps.json",
+        default=DATA_PATH,
         description="地图数据路径，支持绝对路径；若缺失则回退到内置资源",
     )
-    static_root: Path = Field(default=PACKAGE_ROOT.parent / "static")
+    static_root: Path = Field(default=STATIC_ROOT)
     ocr_backend: str = Field(
         default="rapidocr",
         description="rapidocr / tesseract / auto（auto 表示 rapidocr 失败时才回退 tesseract）",
     )
     ocr_region: OCRRegion = Field(default_factory=OCRRegion)
     ocr_debug: bool = Field(default=True, description="是否输出 OCR 截图以便调试")
-    debug_dir: Path = Field(default=PACKAGE_ROOT.parent / "debug")
+    debug_dir: Path = Field(default=DEBUG_DIR)
     hotkey: str = Field(default="ctrl+shift+q", description="触发 OCR 的热键组合")
     chat_hotkey: str = Field(default="ctrl+alt+w", description="触发聊天框区域选择的热键组合")
     debounce_ms: int = Field(default=200, ge=0)
@@ -47,7 +60,15 @@ def load_config(path: Optional[Path] = None) -> AppConfig:
     """
     从磁盘加载配置；若文件不存在则生成包含默认热键在内的 config.json。
     """
-    config_path = path or PACKAGE_ROOT.parent / "config.json"
+    if path:
+        config_path = path
+    elif hasattr(sys, '_MEIPASS'):
+        # PyInstaller 环境：配置文件在可执行文件所在目录
+        config_path = Path.cwd() / "config.json"
+    else:
+        # 开发环境
+        config_path = PACKAGE_ROOT.parent / "config.json"
+
     if not config_path.exists():
         config = AppConfig()
         config.config_path = config_path
