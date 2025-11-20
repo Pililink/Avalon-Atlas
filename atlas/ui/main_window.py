@@ -13,7 +13,9 @@ from ..logger import get_logger
 from ..services.hotkey_service import HotkeyService
 from ..services.ocr_service import OcrService
 from ..services.search_service import MapSearchService, SearchResult
+from .region_selector import RegionSelector
 from .resource_loader import ResourceLoader
+from .settings_dialog import SettingsDialog
 from .widgets import MapListItemWidget
 
 logger = get_logger(__name__)
@@ -57,6 +59,7 @@ class _HighlightDelegate(QtWidgets.QStyledItemDelegate):
 
 class MainWindow(QtWidgets.QMainWindow):
     hotkeyText = QtCore.Signal(str)
+    chatRegionTrigger = QtCore.Signal()  # 聊天框区域选择触发信号
 
     def __init__(
         self,
@@ -83,17 +86,23 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.results: List[SearchResult] = []
         self._item_by_slug: dict[str, QtWidgets.QListWidgetItem] = {}
-        self._hotkey_record_thread: Optional[threading.Thread] = None
-        self._hotkey_record_cancel = threading.Event()
+        self._region_selector: Optional[RegionSelector] = None
 
         self._build_ui()
         self._connect_signals()
         self._populate_all_records(initial=True)
 
         self.hotkeyText.connect(self._handle_hotkey_text)
+        self.chatRegionTrigger.connect(self._show_region_selector)
         self.hotkey_service.set_callback(self.hotkeyText.emit)
         try:
             self.hotkey_service.start()
+            # 注册聊天框热键
+            self.hotkey_service.register_hotkey(
+                "chat",
+                self.config.chat_hotkey,
+                lambda _: self.chatRegionTrigger.emit()
+            )
         except Exception as exc:
             logger.error("热键注册失败: %s", exc)
             self.statusBar().showMessage(f"热键注册失败: {exc}")
@@ -150,26 +159,20 @@ class MainWindow(QtWidgets.QMainWindow):
         popup_layout.addWidget(self._popup_list)
         self._popup_container.hide()
 
-        # === 热键配置区域 ===
-        self.hotkey_input = QtWidgets.QLineEdit(self.config.hotkey)
-        self.hotkey_input.setPlaceholderText("请点击下方按钮录制热键")
-        self.hotkey_input.setReadOnly(True)
-        self.hotkey_record_button = QtWidgets.QPushButton("录制热键")
-        self.hotkey_button = QtWidgets.QPushButton("保存热键")
+        # === 底部区域 ===
+        self.settings_button = QtWidgets.QPushButton("设置")
         self.help_button = QtWidgets.QPushButton("使用说明")
 
-        hotkey_layout = QtWidgets.QHBoxLayout()
-        hotkey_layout.addWidget(QtWidgets.QLabel("热键配置："))
-        hotkey_layout.addWidget(self.hotkey_input)
-        hotkey_layout.addWidget(self.hotkey_record_button)
-        hotkey_layout.addWidget(self.hotkey_button)
-        hotkey_layout.addWidget(self.help_button)
+        button_layout = QtWidgets.QHBoxLayout()
+        button_layout.addWidget(self.selected_label)  # 已选标签放在左侧
+        button_layout.addStretch()
+        button_layout.addWidget(self.settings_button)
+        button_layout.addWidget(self.help_button)
 
         # === 组装布局 ===
         layout.addLayout(controls)
-        layout.addWidget(self.selected_label)
         layout.addWidget(self.selected_list)
-        layout.addLayout(hotkey_layout)
+        layout.addLayout(button_layout)
 
         self.setCentralWidget(central)
         self.setMinimumWidth(480)
@@ -190,8 +193,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._preview_label.hide()
 
     def _connect_signals(self) -> None:
-        self.hotkey_record_button.clicked.connect(self._start_hotkey_recording)
-        self.hotkey_button.clicked.connect(self._handle_hotkey_update)
+        self.settings_button.clicked.connect(self._show_settings)
         self.help_button.clicked.connect(self._show_usage_help)
         self.search_button.clicked.connect(self.execute_search)
         self.clear_button.clicked.connect(self._handle_clear)
@@ -201,37 +203,83 @@ class MainWindow(QtWidgets.QMainWindow):
         self._popup_list.itemClicked.connect(self._handle_popup_selection)
         self._popup_list.itemActivated.connect(self._handle_popup_selection)
 
+    def _show_settings(self) -> None:
+        """显示设置对话框"""
+        dialog = SettingsDialog(self.config, self)
+        if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted:
+            # 保存配置到文件
+            save_config(self.config)
+
+            # 更新热键注册
+            try:
+                self.hotkey_service.register_hotkey(
+                    "ocr",
+                    self.config.hotkey,
+                    self.hotkeyText.emit
+                )
+                self.hotkey_service.register_hotkey(
+                    "chat",
+                    self.config.chat_hotkey,
+                    lambda _: self.chatRegionTrigger.emit()
+                )
+                self.statusBar().showMessage("设置已保存并生效", 2000)
+            except Exception as exc:
+                logger.error("更新热键失败: %s", exc)
+                self.statusBar().showMessage(f"热键更新失败: {exc}", 3000)
+
     def _show_usage_help(self) -> None:
         """显示使用说明对话框"""
         help_text = """
 <h2>Avalon Atlas 使用说明</h2>
 
 <h3>📝 手动搜索</h3>
-<ol>
-<li>在搜索框输入地图名称，支持模糊匹配和部分拼写</li>
-<li>点击候选项即可添加到已选列表</li>
-<li>悬停候选可预览完整地图，双击可复制名称</li>
-</ol>
-
-<h3>⌨️ 热键 OCR</h3>
-<ol>
-<li>点击"录制热键"，按下目标组合键，再点"保存热键"完成设置</li>
-<li>在游戏中，将鼠标移动到地图图标上，等待地图名称显示</li>
-<li>地图名称出现后，按下热键即可自动识别并添加到列表</li>
-</ol>
-
-<h3>💡 使用技巧</h3>
 <ul>
-<li>搜索支持容错输入（如 c4s0s 会匹配 casos）</li>
-<li>OCR 识别时，鼠标应停在地图名称正下方以获得最佳效果</li>
-<li>OCR 失败时可打开调试模式查看截图与识别文本</li>
-<li>推荐热键：Ctrl+Shift+Q 或 Ctrl+Alt+M</li>
-<li>配置文件储存在程序目录的 config.json，方便备份同步</li>
+<li><b>模糊匹配</b>：输入地图名称的一部分即可搜索（如输入 "hirexo" 匹配 "Hiros-Exelos"）</li>
+<li><b>缩写查询</b>：支持缩写搜索，自动拆分匹配
+  <ul>
+    <li>两段地图名：如输入 "souuzu" 匹配 "Soues-Uzurtum"</li>
+    <li>三段地图名：如输入 "qiiinvie" 匹配 "Qiient-In-Viesis"</li>
+  </ul>
+</li>
+<li><b>查看详情</b>：点击候选项添加到列表，悬停预览完整地图，双击复制名称</li>
+</ul>
+
+<h3>⌨️ 双热键 OCR 识别</h3>
+
+<h4>1️⃣ 鼠标 OCR（推荐热键：Ctrl+Shift+Q）</h4>
+<ul>
+<li>将鼠标移动到传送门图标处游戏内弹出地图名后，按下热键自动识别</li>
+</ul>
+
+<h4>2️⃣ 聊天框 OCR（推荐热键：Ctrl+Shift+W）</h4>
+<ul>
+<li>按下热键后，拖动鼠标框选聊天框区域</li>
+<li>自动识别区域内所有地图名</li>
+<li>支持标准地图名和缩写格式（前3字符）</li>
+<li>可同时识别多个地图名（如聊天框显示多个地图时）</li>
+</ul>
+
+<h3>💡 高级技巧</h3>
+<ul>
+<li><b>调试模式</b>：在设置中开启"OCR调试"，查看识别截图和原始文本（保存在 debug/ 文件夹）</li>
+<li><b>查看日志</b>：状态栏会显示OCR识别的原始文本和匹配结果</li>
+<li><b>缩写查询</b>：OCR 识别到的缩写文本也能自动匹配完整地图名</li>
+<li><b>批量添加</b>：使用聊天框 OCR 可一次添加多个地图</li>
+<li><b>配置备份</b>：配置文件储存在程序目录的 config.json，方便备份同步</li>
+</ul>
+
+<h3>🔧 设置说明</h3>
+<ul>
+<li><b>鼠标 OCR 热键</b>：用于识别鼠标位置的地图名</li>
+<li><b>聊天框 OCR 热键</b>：用于框选区域批量识别</li>
+<li><b>OCR 引擎</b>：可选择 RapidOCR（默认）或 Tesseract</li>
+<li><b>OCR 调试</b>：开启后会保存截图和识别文本到 debug/ 文件夹</li>
 </ul>
 
 <hr>
-<p><b>GitHub 仓库：</b><a href="https://github.com/Pililink/Avalon-Atlas">https://github.com/Pililink/Avalon-Atlas</a></p>
-<p><b>问题反馈：</b>欢迎在 GitHub Issues 提交建议或错误报告</p>
+<p><b>GitHub 仓库：</b> <a href="https://github.com/Pililink/Avalon-Atlas">https://github.com/Pililink/Avalon-Atlas</a></p>
+<p><b>问题反馈：</b> 欢迎在 GitHub Issues 提交建议或错误报告</p>
+<p style="color: #888; font-size: 10px;">提示：双击此对话框中的链接可以复制</p>
         """
 
         msg_box = QtWidgets.QMessageBox(self)
@@ -249,100 +297,22 @@ class MainWindow(QtWidgets.QMainWindow):
         if not normalized:
             self.statusBar().showMessage("OCR 未识别到有效文本", 3000)
             return
-        self.statusBar().showMessage(f"OCR 识别: {normalized}", 3000)
+
+        # 显示OCR识别的文本
+        self.statusBar().showMessage(f"OCR 识别: {normalized}", 5000)
+        logger.info("鼠标 OCR 识别: %s", normalized)
+
         self._popup_container.hide()
         self._add_map_from_hotkey(normalized)
-
-    def _handle_hotkey_update(self) -> None:
-        combo = self.hotkey_input.text().strip()
-        if not combo:
-            self.statusBar().showMessage("热键不能为空", 3000)
-            self.hotkey_input.setText(self.config.hotkey)
-            return
-        if combo == self.config.hotkey:
-            self.statusBar().showMessage("热键未变化", 2000)
-            return
-        previous_combo = self.config.hotkey
-        try:
-            self.hotkey_service.update_hotkey(combo)
-        except Exception as exc:
-            logger.error("热键注册失败: %s", exc)
-            self.statusBar().showMessage(f"热键注册失败: {exc}", 5000)
-            try:
-                self.hotkey_service.update_hotkey(previous_combo)
-            except Exception as rollback_exc:
-                logger.error("回滚热键失败: %s", rollback_exc)
-            self.hotkey_input.setText(previous_combo)
-            return
-        self.config.hotkey = combo
-        try:
-            save_config(self.config)
-        except Exception as exc:
-            logger.warning("保存热键配置失败: %s", exc)
-            self.statusBar().showMessage(f"热键已切换，但写入配置失败: {exc}", 5000)
-        else:
-            self.statusBar().showMessage(f"热键已更新为 {combo}", 3000)
-        self._update_search_placeholder()
-
-    def _start_hotkey_recording(self) -> None:
-        if self._hotkey_record_thread and self._hotkey_record_thread.is_alive():
-            self.statusBar().showMessage("正在等待热键输入...", 3000)
-            return
-        self._hotkey_record_cancel.clear()
-        self.hotkey_record_button.setEnabled(False)
-        self.hotkey_record_button.setText("请按下热键...")
-        self.statusBar().showMessage("请按下新的热键组合，录制完成后自动保存", 5000)
-        worker = threading.Thread(target=self._record_hotkey_worker, daemon=True)
-        self._hotkey_record_thread = worker
-        worker.start()
-
-    def _record_hotkey_worker(self) -> None:
-        try:
-            combo = keyboard.read_hotkey(suppress=False)
-        except Exception as exc:
-            QtCore.QMetaObject.invokeMethod(
-                self,
-                "_on_hotkey_record_failed",
-                QtCore.Qt.ConnectionType.QueuedConnection,
-                QtCore.Q_ARG(str, str(exc)),
-            )
-            return
-        if self._hotkey_record_cancel.is_set():
-            return
-        QtCore.QMetaObject.invokeMethod(
-            self,
-            "_on_hotkey_recorded",
-            QtCore.Qt.ConnectionType.QueuedConnection,
-            QtCore.Q_ARG(str, combo),
-        )
-
-    @QtCore.Slot(str)
-    def _on_hotkey_recorded(self, combo: str) -> None:
-        self._hotkey_record_thread = None
-        self.hotkey_record_button.setEnabled(True)
-        self.hotkey_record_button.setText("录制热键")
-        normalized = combo.split(",")[0].strip().lower().replace(" ", "")
-        if not normalized:
-            self.statusBar().showMessage("未捕获到热键，请重试", 4000)
-            return
-        self.hotkey_input.setText(normalized)
-        self._handle_hotkey_update()
-
-    @QtCore.Slot(str)
-    def _on_hotkey_record_failed(self, message: str) -> None:
-        self._hotkey_record_thread = None
-        self.hotkey_record_button.setEnabled(True)
-        self.hotkey_record_button.setText("录制热键")
-        self.statusBar().showMessage(f"录制热键失败: {message}", 5000)
 
     def _update_search_placeholder(self) -> None:
         placeholder_hotkey = (
             self.config.hotkey.upper().replace(" ", "")
             if self.config.hotkey
-            else "CTRL+ALT+M"
+            else "CTRL+ALT+q"
         )
         self.search_input.setPlaceholderText(
-            f"输入地图名称或使用热键 {placeholder_hotkey} OCR"
+            f"输入地图名称或使用热键识别"
         )
 
     def _add_map_from_hotkey(self, query: str) -> None:
@@ -454,7 +424,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self._popup_container.setVisible(False)
 
     def closeEvent(self, event: QtGui.QCloseEvent) -> None:
-        self._hotkey_record_cancel.set()
         try:
             self.hotkey_service.stop()
             self.ocr_service.close()
@@ -462,6 +431,107 @@ class MainWindow(QtWidgets.QMainWindow):
             logger.warning("关闭服务异常: %s", exc)
         self._preview_label.hide()
         return super().closeEvent(event)
+
+    def _show_region_selector(self) -> None:
+        """显示区域选择器"""
+        logger.info("显示聊天框区域选择器")
+        if self._region_selector is None:
+            self._region_selector = RegionSelector()
+            self._region_selector.region_selected.connect(self._handle_region_selected)
+
+        self._region_selector.showFullScreen()
+
+    def _handle_region_selected(self, left: int, top: int, width: int, height: int) -> None:
+        """处理区域选择完成，立即执行OCR"""
+        logger.info("选择区域: left=%d, top=%d, width=%d, height=%d", left, top, width, height)
+
+        # 立即执行 OCR（不保存区域）
+        threading.Thread(
+            target=self._run_chat_ocr,
+            args=(left, top, width, height),
+            daemon=True
+        ).start()
+
+    def _run_chat_ocr(self, left: int, top: int, width: int, height: int) -> None:
+        """在后台线程执行聊天框 OCR"""
+        try:
+            logger.info("执行聊天框 OCR")
+            result = self.ocr_service.capture_chat_region(left, top, width, height)
+        except Exception as exc:
+            logger.exception("聊天框 OCR 失败: %s", exc)
+            QtCore.QMetaObject.invokeMethod(
+                self.statusBar(),
+                "showMessage",
+                QtCore.Qt.ConnectionType.QueuedConnection,
+                QtCore.Q_ARG(str, f"聊天框 OCR 失败: {exc}"),
+                QtCore.Q_ARG(int, 5000),
+            )
+            return
+
+        if not result:
+            logger.info("聊天框 OCR 未识别到内容")
+            QtCore.QMetaObject.invokeMethod(
+                self.statusBar(),
+                "showMessage",
+                QtCore.Qt.ConnectionType.QueuedConnection,
+                QtCore.Q_ARG(str, "聊天框 OCR 未识别到内容"),
+                QtCore.Q_ARG(int, 3000),
+            )
+            return
+
+        # 输出原始识别内容
+        raw_text_preview = result.raw_text.replace('\n', ' | ')[:200]
+        logger.info("聊天框 OCR 原始文本: %s", result.raw_text)
+
+        if not result.map_names:
+            logger.info("聊天框 OCR 未从原始文本中提取到地图名")
+            QtCore.QMetaObject.invokeMethod(
+                self.statusBar(),
+                "showMessage",
+                QtCore.Qt.ConnectionType.QueuedConnection,
+                QtCore.Q_ARG(str, f"OCR原始: {raw_text_preview} | 未识别到地图名"),
+                QtCore.Q_ARG(int, 5000),
+            )
+            return
+
+        logger.info("聊天框 OCR 识别到 %d 个地图名: %s", len(result.map_names), result.map_names)
+
+        # 在状态栏显示原始文本和识别结果
+        status_msg = f"OCR原始: {raw_text_preview} | 识别到 {len(result.map_names)} 个地图: {', '.join(result.map_names)}"
+        QtCore.QMetaObject.invokeMethod(
+            self.statusBar(),
+            "showMessage",
+            QtCore.Qt.ConnectionType.QueuedConnection,
+            QtCore.Q_ARG(str, status_msg),
+            QtCore.Q_ARG(int, 8000),
+        )
+
+        # 在主线程中添加到搜索结果
+        for map_name in result.map_names:
+            QtCore.QMetaObject.invokeMethod(
+                self,
+                "_add_map_by_name",
+                QtCore.Qt.ConnectionType.QueuedConnection,
+                QtCore.Q_ARG(str, map_name),
+            )
+
+    @QtCore.Slot(str)
+    def _add_map_by_name(self, map_name: str) -> None:
+        """根据地图名添加到列表"""
+        # 搜索地图
+        results = self.search_service.search(map_name)
+        if not results:
+            logger.warning("未找到地图: %s", map_name)
+            self.statusBar().showMessage(f"未找到地图: {map_name}", 3000)
+            return
+
+        # 选择最佳匹配
+        best_result = results[0]
+        logger.info("添加地图: %s (匹配度: %.2f)", best_result.record.name, best_result.score)
+
+        # 添加到已选列表
+        self._add_selected_result(best_result)
+        self.statusBar().showMessage(f"已添加: {best_result.record.name}", 2000)
 
     def _handle_popup_selection(self, item: QtWidgets.QListWidgetItem) -> None:
         result = item.data(QtCore.Qt.ItemDataRole.UserRole)

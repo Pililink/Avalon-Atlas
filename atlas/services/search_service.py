@@ -47,6 +47,9 @@ class MapSearchService:
 
         results = self._fuzzy_match(query)
         if not results:
+            # 尝试缩写匹配
+            results = self._abbreviation_match(query)
+        if not results:
             results = self._fallback_match(query)
         self._remember(query, results)
         return results
@@ -68,6 +71,86 @@ class MapSearchService:
 
         matches.sort(key=lambda r: (-r.score, r.record.tier, r.record.slug))
         return matches[: self.max_results]
+
+    def _abbreviation_match(self, query: str) -> List[SearchResult]:
+        """
+        缩写匹配：支持将查询字符串拆分为多段，与地图名的各段匹配
+        例如：souuzu 匹配 soues-uzurtum，qiiinvie 匹配 qiient-in-viesis
+        """
+        # 如果查询包含 '-'，则不使用缩写匹配
+        if "-" in query:
+            return []
+
+        candidates: List[SearchResult] = []
+        for record in self._records:
+            score = self._match_abbreviation(query, record.slug)
+            if score > 0:
+                candidates.append(SearchResult(record=record, score=score, method="abbreviation"))
+
+        candidates.sort(key=lambda r: (-r.score, r.record.tier, r.record.slug))
+        return candidates[: self.max_results]
+
+    def _match_abbreviation(self, query: str, slug: str) -> float:
+        """
+        尝试将查询字符串拆分为多段，与 slug 的各段匹配
+        返回匹配得分，0 表示不匹配
+        """
+        parts = slug.split("-")
+        num_parts = len(parts)
+
+        # 地图名必须有 2-3 段
+        if num_parts < 2 or num_parts > 3:
+            return 0.0
+
+        # 尝试不同的拆分方式
+        best_score = 0.0
+
+        if num_parts == 2:
+            # 两段地图名：尝试所有可能的拆分点
+            for split_pos in range(1, len(query)):
+                q1, q2 = query[:split_pos], query[split_pos:]
+                if self._is_prefix_or_contains(parts[0], q1) and self._is_prefix_or_contains(parts[1], q2):
+                    # 计算得分：前缀匹配得分更高
+                    score = 0.0
+                    if parts[0].startswith(q1):
+                        score += 40.0 * (len(q1) / len(parts[0]))
+                    else:
+                        score += 30.0 * (len(q1) / len(parts[0]))
+
+                    if parts[1].startswith(q2):
+                        score += 40.0 * (len(q2) / len(parts[1]))
+                    else:
+                        score += 30.0 * (len(q2) / len(parts[1]))
+
+                    best_score = max(best_score, score)
+
+        elif num_parts == 3:
+            # 三段地图名：尝试两个拆分点
+            for split1 in range(1, len(query) - 1):
+                for split2 in range(split1 + 1, len(query)):
+                    q1, q2, q3 = query[:split1], query[split1:split2], query[split2:]
+                    if (
+                        self._is_prefix_or_contains(parts[0], q1)
+                        and self._is_prefix_or_contains(parts[1], q2)
+                        and self._is_prefix_or_contains(parts[2], q3)
+                    ):
+                        # 计算得分
+                        score = 0.0
+                        for part, q_part in zip(parts, [q1, q2, q3]):
+                            if part.startswith(q_part):
+                                score += 35.0 * (len(q_part) / len(part))
+                            else:
+                                score += 25.0 * (len(q_part) / len(part))
+
+                        best_score = max(best_score, score)
+
+        return best_score
+
+    def _is_prefix_or_contains(self, text: str, query: str) -> bool:
+        """检查 query 是否是 text 的前缀或包含在 text 中"""
+        if not query:
+            return False
+        return text.startswith(query) or query in text
 
     def _fallback_match(self, query: str) -> List[SearchResult]:
         candidates: List[SearchResult] = []

@@ -69,7 +69,8 @@ class _WinHotkeyListener:
     Windows RegisterHotKey based listener to ensure hotkeys work in fullscreen games.
     """
 
-    def __init__(self, callback: Callable[[], None]):
+    def __init__(self, hotkey_id: int, callback: Callable[[], None]):
+        self._hotkey_id = hotkey_id
         self._callback = callback
         self._thread: Optional[threading.Thread] = None
         self._thread_id: int = 0
@@ -86,7 +87,7 @@ class _WinHotkeyListener:
         self._modifiers = modifiers
         self._vk = vk
         self._stop_event.clear()
-        self._thread = threading.Thread(target=self._run, name="hotkey-win", daemon=True)
+        self._thread = threading.Thread(target=self._run, name=f"hotkey-win-{self._hotkey_id}", daemon=True)
         self._thread.start()
 
     def unregister(self) -> None:
@@ -105,7 +106,7 @@ class _WinHotkeyListener:
         kernel32 = ctypes.windll.kernel32
         self._thread_id = kernel32.GetCurrentThreadId()
 
-        if not user32.RegisterHotKey(None, 1, self._modifiers, self._vk):
+        if not user32.RegisterHotKey(None, self._hotkey_id, self._modifiers, self._vk):
             logger.error("Windows 全局热键注册失败: %s", self._combo)
             return
         self._registered = True
@@ -115,7 +116,7 @@ class _WinHotkeyListener:
             result = user32.GetMessageW(ctypes.byref(msg), None, 0, 0)
             if result == 0 or result == -1:
                 break
-            if msg.message == WM_HOTKEY and msg.wParam == 1:
+            if msg.message == WM_HOTKEY and msg.wParam == self._hotkey_id:
                 try:
                     self._callback()
                 except Exception:
@@ -124,7 +125,7 @@ class _WinHotkeyListener:
                 break
 
         if self._registered:
-            user32.UnregisterHotKey(None, 1)
+            user32.UnregisterHotKey(None, self._hotkey_id)
             self._registered = False
 
     def _parse_combo(self, combo: str) -> tuple[int, int]:
@@ -164,61 +165,101 @@ class HotkeyService:
         self.config = config
         self.ocr_service = ocr_service
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ocr")
-        self._hotkey_handle: Optional[int] = None
-        self._win_listener: Optional[_WinHotkeyListener] = _WinHotkeyListener(self._handle_trigger) if sys.platform == "win32" else None
-        self._callback: Optional[Callable[[str], None]] = None
+        self._hotkey_handles: dict[str, int] = {}  # key -> keyboard handle
+        self._win_listeners: dict[str, _WinHotkeyListener] = {}  # key -> windows listener
+        self._callbacks: dict[str, Callable[[str], None]] = {}  # key -> callback
         self._lock = threading.Lock()
         self._ocr_lock = threading.Lock()
-        self._current_combo: Optional[str] = None
+
+    def register_hotkey(self, key: str, combo: str, callback: Callable[[str], None]) -> None:
+        """
+        注册一个热键
+
+        Args:
+            key: 热键标识符(如 "ocr", "chat")
+            combo: 热键组合(如 "ctrl+alt+q")
+            callback: 触发时的回调函数
+        """
+        with self._lock:
+            # 先注销已有的
+            if key in self._hotkey_handles or key in self._win_listeners:
+                self._unregister_hotkey(key)
+
+            self._callbacks[key] = callback
+            hotkey_id = hash(key) % 1000  # 生成唯一 ID
+
+            # 创建包装回调
+            def trigger_callback():
+                self._executor.submit(self._handle_trigger, key)
+
+            logger.info("注册热键 %s: %s", key, combo)
+
+            # 尝试 Windows 全局热键
+            if sys.platform == "win32":
+                try:
+                    listener = _WinHotkeyListener(hotkey_id, trigger_callback)
+                    listener.register(combo)
+                    self._win_listeners[key] = listener
+                    return
+                except HotkeyRegistrationError as exc:
+                    logger.warning("Windows 全局热键解析失败，回退 keyboard backend: %s", exc)
+                except Exception as exc:
+                    logger.warning("Windows 全局热键注册失败，回退 keyboard backend: %s", exc)
+
+            # 回退到 keyboard 库
+            handle = keyboard.add_hotkey(combo, trigger_callback)
+            self._hotkey_handles[key] = handle
+
+    def unregister_hotkey(self, key: str) -> None:
+        """注销指定热键"""
+        with self._lock:
+            self._unregister_hotkey(key)
+            self._callbacks.pop(key, None)
 
     def set_callback(self, callback: Callable[[str], None]) -> None:
-        self._callback = callback
+        """兼容旧接口 - 设置默认 OCR 热键回调"""
+        self._callbacks["ocr"] = callback
 
     def start(self) -> None:
-        with self._lock:
-            if self._current_combo:
-                return
-            combo = self.config.hotkey
-            self._register_hotkey(combo)
+        """启动默认 OCR 热键"""
+        combo = self.config.hotkey
+        if "ocr" not in self._callbacks:
+            # 默认回调 - 只是记录日志
+            self._callbacks["ocr"] = lambda text: logger.info("OCR: %s", text)
+        self.register_hotkey("ocr", combo, self._callbacks["ocr"])
 
     def stop(self) -> None:
         with self._lock:
-            self._unregister_hotkey()
-            self._current_combo = None
+            for key in list(self._hotkey_handles.keys()):
+                self._unregister_hotkey(key)
+            self._hotkey_handles.clear()
+            self._win_listeners.clear()
         self._executor.shutdown(wait=False, cancel_futures=True)
 
     def update_hotkey(self, combo: str) -> None:
-        with self._lock:
-            if combo == self._current_combo:
-                return
-            self._unregister_hotkey()
-            self._register_hotkey(combo)
+        """兼容旧接口 - 更新 OCR 热键"""
+        if "ocr" in self._callbacks:
+            self.register_hotkey("ocr", combo, self._callbacks["ocr"])
 
-    def _unregister_hotkey(self) -> None:
-        if self._hotkey_handle is not None:
-            keyboard.remove_hotkey(self._hotkey_handle)
-            self._hotkey_handle = None
-        if self._win_listener is not None:
-            self._win_listener.unregister()
+    def _unregister_hotkey(self, key: str) -> None:
+        """内部方法 - 注销热键(不加锁)"""
+        if key in self._hotkey_handles:
+            keyboard.remove_hotkey(self._hotkey_handles[key])
+            del self._hotkey_handles[key]
 
-    def _register_hotkey(self, combo: str) -> None:
-        logger.info("注册热键 %s", combo)
-        if self._win_listener is not None:
-            try:
-                self._win_listener.register(combo)
-                self._current_combo = combo
-                return
-            except HotkeyRegistrationError as exc:
-                logger.warning("Windows 全局热键解析失败，回退 keyboard backend: %s", exc)
-            except Exception as exc:  # pragma: no cover - native errors unlikely locally
-                logger.warning("Windows 全局热键注册失败，回退 keyboard backend: %s", exc)
-                self._win_listener.unregister()
-        handle = keyboard.add_hotkey(combo, self._handle_trigger)
-        self._hotkey_handle = handle
-        self._current_combo = combo
+        if key in self._win_listeners:
+            self._win_listeners[key].unregister()
+            del self._win_listeners[key]
 
-    def _handle_trigger(self) -> None:
-        self._executor.submit(self._run_ocr)
+    def _handle_trigger(self, key: str) -> None:
+        """处理热键触发"""
+        if key == "ocr":
+            self._run_ocr()
+        elif key == "chat":
+            # 聊天框热键由主窗口处理
+            callback = self._callbacks.get(key)
+            if callback:
+                callback("")  # 传空字符串表示需要选择区域
 
     def _run_ocr(self) -> None:
         if not self._ocr_lock.acquire(blocking=False):
@@ -236,7 +277,16 @@ class HotkeyService:
         if not result:
             logger.info("OCR 未识别到文本")
             return
-        logger.info("OCR 识别文本: %s", result.text)
 
-        if self._callback:
-            self._callback(result.text)
+        # 记录原始识别内容
+        logger.info("OCR 原始文本: %s", result.raw_text)
+
+        # 支持多个地图名
+        map_names = result.map_names if result.map_names else [result.text]
+        logger.info("OCR 识别到 %d 个地图名: %s", len(map_names), map_names)
+
+        callback = self._callbacks.get("ocr")
+        if callback:
+            # 对每个识别到的地图名调用回调
+            for map_name in map_names:
+                callback(map_name)
