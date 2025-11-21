@@ -7,6 +7,22 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from ..data.models import MapRecord
 from .resource_loader import ResourceLoader
 
+# 地图类型中文映射
+MAP_TYPE_NAMES = {
+    "TUNNEL_ROYAL": "通向外界-皇家大陆(蓝/黄区)",
+    "TUNNEL_ROYAL_RED": "通向外界-皇家大陆(红区)",
+    "TUNNEL_BLACK_LOW": "通向外界-黑区外圈",
+    "TUNNEL_BLACK_MEDIUM": "通向外界-黑区中圈",
+    "TUNNEL_BLACK_HIGH": "通向外界-黑区内圈",
+    "TUNNEL_DEEP": "阿瓦隆通道-深层",
+    "TUNNEL_LOW": "阿瓦隆通道-外层",
+    "TUNNEL_MEDIUM": "阿瓦隆通道-中层",
+    "TUNNEL_HIGH": "阿瓦隆通道-内层",
+    "TUNNEL_DEEP_RAID": "金门",
+    "TUNNEL_HIDEOUT": "地堡-普通",
+    "TUNNEL_HIDEOUT_DEEP": "地堡-深层",
+}
+
 
 class MapListItemWidget(QtWidgets.QWidget):
     hovered = QtCore.Signal(MapRecord)
@@ -33,8 +49,9 @@ class MapListItemWidget(QtWidgets.QWidget):
         font = title.font()
         font.setBold(True)
         title.setFont(font)
-        map_type_label = QtWidgets.QLabel(record.map_type.replace("_", " "))
-        map_type_label.setStyleSheet("color: #666; margin-left: 8px;")
+        map_type_cn = MAP_TYPE_NAMES.get(record.map_type, record.map_type)
+        map_type_label = QtWidgets.QLabel(map_type_cn)
+        map_type_label.setStyleSheet("color: #666; margin-left: 8px; font-size: 11px;")
         title_row.addWidget(title)
         title_row.addStretch(1)
         title_row.addWidget(map_type_label, 0, QtCore.Qt.AlignmentFlag.AlignRight)

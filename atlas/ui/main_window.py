@@ -396,7 +396,7 @@ class MainWindow(QtWidgets.QMainWindow):
     <li>三段地图名：如输入 "qiiinvie" 匹配 "Qiient-In-Viesis"</li>
   </ul>
 </li>
-<li><b>查看详情</b>：点击候选项添加到列表，悬停预览完整地图，双击复制名称</li>
+<li><b>查看详情</b>：点击候选项添加到列表，悬停预览完整地图，双击复制详细信息</li>
 </ul>
 
 <h3>⌨️ 双热键 OCR 识别</h3>
@@ -569,8 +569,93 @@ class MainWindow(QtWidgets.QMainWindow):
     def _copy_selected_name(self, item: QtWidgets.QListWidgetItem) -> None:
         result = item.data(QtCore.Qt.ItemDataRole.UserRole)
         if isinstance(result, SearchResult):
-            QtWidgets.QApplication.clipboard().setText(result.record.name)
-            self._show_status_message(f"已复制 {result.record.name}", 2000)
+            # 格式化地图详细信息
+            record = result.record
+            formatted_text = self._format_map_details(record)
+            QtWidgets.QApplication.clipboard().setText(formatted_text)
+            self._show_status_message(f"已复制 {record.name} 详细信息", 2000)
+
+    def _format_map_details(self, record) -> str:
+        """格式化地图详细信息为可读文本"""
+        # 地图类型中文映射（根据 model.py 注释）
+        map_type_names = {
+            "TUNNEL_ROYAL": "通向外界-皇家大陆(蓝/黄区)",
+            "TUNNEL_ROYAL_RED": "通向外界-皇家大陆(红区)",
+            "TUNNEL_BLACK_LOW": "通向外界-黑区外圈",
+            "TUNNEL_BLACK_MEDIUM": "通向外界-黑区中圈",
+            "TUNNEL_BLACK_HIGH": "通向外界-黑区内圈",
+            "TUNNEL_DEEP": "阿瓦隆通道-深层",
+            "TUNNEL_LOW": "阿瓦隆通道-外层",
+            "TUNNEL_MEDIUM": "阿瓦隆通道-中层",
+            "TUNNEL_HIGH": "阿瓦隆通道-内层",
+            "TUNNEL_DEEP_RAID": "金门",
+            "TUNNEL_HIDEOUT": "地堡-普通",
+            "TUNNEL_HIDEOUT_DEEP": "地堡-深层",
+        }
+
+        # 提取等级数字
+        tier_number = record.tier.replace("T", "")
+
+        # 地图类型
+        map_type_cn = map_type_names.get(record.map_type, record.map_type)
+
+        # 格式化输出
+        lines = [
+            f"地图名: {record.name}",
+            f"级别: {tier_number}",
+            f"类型: {map_type_cn}",
+            "",
+            "资源数量:",
+        ]
+
+        # 洞穴信息（按注释：金洞、蓝洞、绿洞）
+        dungeon_parts = []
+        if record.dungeons.avalon > 0:
+            dungeon_parts.append(f"金洞: {record.dungeons.avalon}")
+        if record.dungeons.group > 0:
+            dungeon_parts.append(f"蓝洞: {record.dungeons.group}")
+        if record.dungeons.solo > 0:
+            dungeon_parts.append(f"绿洞: {record.dungeons.solo}")
+
+        if dungeon_parts:
+            lines.append(" | ".join(dungeon_parts))
+
+        # 资源点信息（按注释顺序：石点、木点、矿点、棉点、皮点）
+        resource_parts = []
+        if record.resources.rock > 0:
+            resource_parts.append(f"石点: {record.resources.rock}")
+        if record.resources.wood > 0:
+            resource_parts.append(f"木点: {record.resources.wood}")
+        if record.resources.ore > 0:
+            resource_parts.append(f"矿点: {record.resources.ore}")
+        if record.resources.fiber > 0:
+            resource_parts.append(f"棉点: {record.resources.fiber}")
+        if record.resources.hide > 0:
+            resource_parts.append(f"皮点: {record.resources.hide}")
+
+        if resource_parts:
+            lines.append(" | ".join(resource_parts))
+
+        # 箱子信息（按注释：蓝箱、绿箱、金王座、金箱）
+        chest_parts = []
+        if record.chests.blue > 0:
+            chest_parts.append(f"蓝箱: {record.chests.blue}")
+        if record.chests.green > 0:
+            chest_parts.append(f"绿箱: {record.chests.green}")
+        if record.chests.highGold > 0:
+            chest_parts.append(f"金王座: {record.chests.highGold}")
+        if record.chests.lowGold > 0:
+            chest_parts.append(f"金箱: {record.chests.lowGold}")
+
+        if chest_parts:
+            lines.append(" | ".join(chest_parts))
+
+        # 兔子洞
+        if record.brecilien > 0:
+            lines.append("")
+            lines.append(f"兔子洞: {record.brecilien}")
+
+        return "\n".join(lines)
 
     def _handle_clear(self) -> None:
         self.search_input.clear()

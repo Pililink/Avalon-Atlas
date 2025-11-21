@@ -5,23 +5,23 @@ from pydantic import BaseModel
 
 class Chests(BaseModel):
     blue: int  # 蓝箱
-    green: int  # 绿箱子
+    green: int  # 绿箱
     highGold: int  # 金王座
-    lowGold: int  # 金箱子
+    lowGold: int  # 蓝箱
 
 
 class Dungeons(BaseModel):
-    solo: int  # 单人洞
+    solo: int  # 绿洞
     group: int  # 蓝洞
     avalon: int  # 金洞
 
 
 class Resources(BaseModel):
-    rock: int  # 石头
-    wood: int  # 木头
-    ore: int  # 矿石
-    fiber: int  # 棉花
-    hide: int  # 兽皮
+    rock: int  # 石点
+    wood: int  # 木点
+    ore: int  # 矿点
+    fiber: int  # 棉点
+    hide: int  # 皮点
 
 
 class MapMdoel(BaseModel):
@@ -39,9 +39,9 @@ class MapMdoel(BaseModel):
         "TUNNEL_HIGH",  # 阿瓦隆通道-内层
         "TUNNEL_DEEP_RAID",  # 金门
         "TUNNEL_HIDEOUT",  # 地堡-普通
-        "TUNNEL_HIDEOUT_DEEP",  # Quatun-Et-Nusas
+        "TUNNEL_HIDEOUT_DEEP",  # 地堡-深层
     ]
-    chests: Chests
+    chests: Chests  # 箱子信息
     dungeons: Dungeons
-    resources: Resources
-    brecilien: int  # 显示传送门数量
+    resources: Resources  # 资源信息
+    brecilien: int  # 兔子洞数
