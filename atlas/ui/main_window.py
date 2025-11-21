@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+import sys
 import threading
 from typing import List, Optional
 
@@ -19,6 +20,32 @@ from .settings_dialog import SettingsDialog
 from .widgets import MapListItemWidget
 
 logger = get_logger(__name__)
+
+# Windows API 用于置顶窗口
+if sys.platform == "win32":
+    import ctypes
+    from ctypes import wintypes
+
+    # Windows 常量
+    HWND_TOPMOST = -1
+    HWND_NOTOPMOST = -2
+    SWP_NOMOVE = 0x0002
+    SWP_NOSIZE = 0x0001
+    SWP_SHOWWINDOW = 0x0040
+
+    # 加载 user32.dll
+    user32 = ctypes.windll.user32
+    SetWindowPos = user32.SetWindowPos
+    SetWindowPos.argtypes = [
+        wintypes.HWND,
+        wintypes.HWND,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        wintypes.UINT,
+    ]
+    SetWindowPos.restype = wintypes.BOOL
 
 
 class _HighlightDelegate(QtWidgets.QStyledItemDelegate):
@@ -107,6 +134,37 @@ class MainWindow(QtWidgets.QMainWindow):
             logger.error("热键注册失败: %s", exc)
             self.statusBar().showMessage(f"热键注册失败: {exc}")
 
+        # 应用置顶配置 (延迟到窗口显示后)
+        if self.config.always_on_top:
+            self.pin_button.blockSignals(True)
+            self.pin_button.setChecked(True)
+            self.pin_button.setText("📌 已置顶")
+            self.pin_button.blockSignals(False)
+            # 延迟应用置顶，等待窗口完全初始化
+            QtCore.QTimer.singleShot(100, self._apply_initial_always_on_top)
+
+    def _apply_initial_always_on_top(self) -> None:
+        """初始化时应用置顶设置"""
+        if sys.platform == "win32":
+            hwnd = int(self.winId())
+            result = SetWindowPos(
+                hwnd,
+                HWND_TOPMOST,
+                0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW
+            )
+            if result:
+                logger.info("从配置加载窗口置顶状态: 已启用 (Windows API)")
+            else:
+                logger.warning("初始化置顶失败，恢复配置")
+                self.config.always_on_top = False
+                self.pin_button.setChecked(False)
+                self.pin_button.setText("📌 置顶")
+        else:
+            self.setWindowFlags(self.windowFlags() | QtCore.Qt.WindowType.WindowStaysOnTopHint)
+            self.show()
+            logger.info("从配置加载窗口置顶状态: 已启用")
+
     def _build_ui(self) -> None:
         self.setWindowTitle("Avalon Atlas")
         central = QtWidgets.QWidget()
@@ -126,6 +184,13 @@ class MainWindow(QtWidgets.QMainWindow):
         controls.addWidget(self.clear_button)
 
         self.selected_label = QtWidgets.QLabel("已选 0 条")
+
+        # 添加一个状态消息标签，用于显示临时消息（替代状态栏）
+        self.status_label = QtWidgets.QLabel("")
+        self.status_label.setStyleSheet("color: #888; font-size: 11px;")
+        self._status_timer = QtCore.QTimer(self)
+        self._status_timer.setSingleShot(True)
+        self._status_timer.timeout.connect(lambda: self.status_label.setText(""))
 
         # === 结果列表 ===
         self.selected_list = QtWidgets.QListWidget()
@@ -162,10 +227,15 @@ class MainWindow(QtWidgets.QMainWindow):
         # === 底部区域 ===
         self.settings_button = QtWidgets.QPushButton("设置")
         self.help_button = QtWidgets.QPushButton("使用说明")
+        self.pin_button = QtWidgets.QPushButton("📌 置顶")
+        self.pin_button.setCheckable(True)  # 可切换状态
+        self.pin_button.setToolTip("保持窗口始终在最前")
 
         button_layout = QtWidgets.QHBoxLayout()
         button_layout.addWidget(self.selected_label)  # 已选标签放在左侧
+        button_layout.addWidget(self.status_label)    # 状态消息标签紧跟在已选标签后
         button_layout.addStretch()
+        button_layout.addWidget(self.pin_button)
         button_layout.addWidget(self.settings_button)
         button_layout.addWidget(self.help_button)
 
@@ -177,6 +247,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setCentralWidget(central)
         self.setMinimumWidth(480)
         self.resize(480, 760)
+
+        # 隐藏状态栏，使用自定义的 status_label 代替
+        self.setStatusBar(None)
+
         self._preview_label = QtWidgets.QLabel(self)
         self._preview_label.setWindowFlags(
             QtCore.Qt.WindowType.Tool
@@ -196,9 +270,17 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         self._preview_label.hide()
 
+    def _show_status_message(self, message: str, duration: int = 2000) -> None:
+        """在底部按钮区域显示状态消息"""
+        self.status_label.setText(message)
+        if self._status_timer.isActive():
+            self._status_timer.stop()
+        self._status_timer.start(duration)
+
     def _connect_signals(self) -> None:
         self.settings_button.clicked.connect(self._show_settings)
         self.help_button.clicked.connect(self._show_usage_help)
+        self.pin_button.toggled.connect(self._toggle_always_on_top)
         self.search_button.clicked.connect(self.execute_search)
         self.clear_button.clicked.connect(self._handle_clear)
         self.search_input.returnPressed.connect(self._handle_return_pressed)
@@ -230,6 +312,75 @@ class MainWindow(QtWidgets.QMainWindow):
             except Exception as exc:
                 logger.error("更新热键失败: %s", exc)
                 self.statusBar().showMessage(f"热键更新失败: {exc}", 3000)
+
+    def _toggle_always_on_top(self, checked: bool) -> None:
+        """切换窗口置顶状态"""
+        if sys.platform == "win32":
+            # 使用 Windows API 直接设置窗口置顶，避免 setWindowFlags 导致的问题
+            hwnd = int(self.winId())
+            if checked:
+                # 设置为置顶窗口
+                result = SetWindowPos(
+                    hwnd,
+                    HWND_TOPMOST,
+                    0, 0, 0, 0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW
+                )
+                if result:
+                    self.pin_button.setText("📌 已置顶")
+                    self._show_status_message("窗口已置顶", 2000)
+                    logger.info("窗口置顶已启用 (Windows API)")
+                else:
+                    logger.warning("Windows API 设置置顶失败")
+                    self.pin_button.setChecked(False)
+                    return
+            else:
+                # 取消置顶
+                result = SetWindowPos(
+                    hwnd,
+                    HWND_NOTOPMOST,
+                    0, 0, 0, 0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW
+                )
+                if result:
+                    self.pin_button.setText("📌 置顶")
+                    self._show_status_message("已取消置顶", 2000)
+                    logger.info("窗口置顶已禁用 (Windows API)")
+                else:
+                    logger.warning("Windows API 取消置顶失败")
+                    self.pin_button.setChecked(True)
+                    return
+        else:
+            # 非 Windows 系统使用 Qt 方式 (可能有问题)
+            if checked:
+                self.setWindowFlags(self.windowFlags() | QtCore.Qt.WindowType.WindowStaysOnTopHint)
+                self.pin_button.setText("📌 已置顶")
+                logger.info("窗口置顶已启用")
+            else:
+                self.setWindowFlags(self.windowFlags() & ~QtCore.Qt.WindowType.WindowStaysOnTopHint)
+                self.pin_button.setText("📌 置顶")
+                logger.info("窗口置顶已禁用")
+
+            self.showNormal()
+            self.activateWindow()
+            self.raise_()
+
+        # 保存配置
+        self.config.always_on_top = checked
+        save_config(self.config)
+
+    def _restore_window_state(self, pos: QtCore.QPoint, size: QtCore.QSize) -> None:
+        """恢复窗口位置和大小"""
+        self.resize(size)
+        self.move(pos)
+
+    def _activate_window(self) -> None:
+        """激活窗口并确保获得焦点"""
+        self.raise_()
+        self.activateWindow()
+        # Windows 特定：强制设置前台窗口
+        if hasattr(self, 'winId'):
+            self.setFocus()
 
     def _show_usage_help(self) -> None:
         """显示使用说明对话框"""
@@ -322,11 +473,11 @@ class MainWindow(QtWidgets.QMainWindow):
     def _add_map_from_hotkey(self, query: str) -> None:
         results = self.search_service.search(query)
         if not results:
-            self.statusBar().showMessage("OCR 未匹配到任何地图", 4000)
+            self._show_status_message("OCR 未匹配到任何地图", 4000)
             return
         result = results[0]
         self._add_selected_result(result)
-        self.statusBar().showMessage(f"已添加 {result.record.name}", 3000)
+        self._show_status_message(f"已添加 {result.record.name}", 3000)
 
     def _on_text_changed(self, _: str) -> None:
         if self._debounce_timer.isActive():
@@ -419,7 +570,7 @@ class MainWindow(QtWidgets.QMainWindow):
         result = item.data(QtCore.Qt.ItemDataRole.UserRole)
         if isinstance(result, SearchResult):
             QtWidgets.QApplication.clipboard().setText(result.record.name)
-            self.statusBar().showMessage(f"已复制 {result.record.name}", 2000)
+            self._show_status_message(f"已复制 {result.record.name}", 2000)
 
     def _handle_clear(self) -> None:
         self.search_input.clear()
@@ -526,7 +677,7 @@ class MainWindow(QtWidgets.QMainWindow):
         results = self.search_service.search(map_name)
         if not results:
             logger.warning("未找到地图: %s", map_name)
-            self.statusBar().showMessage(f"未找到地图: {map_name}", 3000)
+            self._show_status_message(f"未找到地图: {map_name}", 3000)
             return
 
         # 选择最佳匹配
@@ -535,7 +686,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # 添加到已选列表
         self._add_selected_result(best_result)
-        self.statusBar().showMessage(f"已添加: {best_result.record.name}", 2000)
+        self._show_status_message(f"已添加: {best_result.record.name}", 2000)
 
     def _handle_popup_selection(self, item: QtWidgets.QListWidgetItem) -> None:
         result = item.data(QtCore.Qt.ItemDataRole.UserRole)
