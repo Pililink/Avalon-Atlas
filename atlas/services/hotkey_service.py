@@ -161,6 +161,10 @@ class _WinHotkeyListener:
 
 
 class HotkeyService:
+    # 类变量：全局递增的热键 ID 计数器
+    _next_hotkey_id = 1
+    _id_lock = threading.Lock()
+
     def __init__(self, config: AppConfig, ocr_service: OcrService):
         self.config = config
         self.ocr_service = ocr_service
@@ -170,6 +174,14 @@ class HotkeyService:
         self._callbacks: dict[str, Callable[[str], None]] = {}  # key -> callback
         self._lock = threading.Lock()
         self._ocr_lock = threading.Lock()
+
+    @classmethod
+    def _get_next_hotkey_id(cls) -> int:
+        """生成唯一的热键 ID"""
+        with cls._id_lock:
+            hotkey_id = cls._next_hotkey_id
+            cls._next_hotkey_id += 1
+            return hotkey_id
 
     def register_hotkey(self, key: str, combo: str, callback: Callable[[str], None]) -> None:
         """
@@ -186,13 +198,14 @@ class HotkeyService:
                 self._unregister_hotkey(key)
 
             self._callbacks[key] = callback
-            hotkey_id = hash(key) % 1000  # 生成唯一 ID
+            # 使用递增计数器生成唯一 ID，避免冲突
+            hotkey_id = self._get_next_hotkey_id()
 
             # 创建包装回调
             def trigger_callback():
                 self._executor.submit(self._handle_trigger, key)
 
-            logger.info("注册热键 %s: %s", key, combo)
+            logger.info("注册热键 %s: %s (ID: %d)", key, combo, hotkey_id)
 
             # 尝试 Windows 全局热键
             if sys.platform == "win32":

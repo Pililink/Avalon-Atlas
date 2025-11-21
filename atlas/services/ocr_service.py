@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from difflib import SequenceMatcher
 import re
+import threading
 import unicodedata
 from typing import Optional, Sequence
 
@@ -69,17 +70,47 @@ class OcrService:
         self._mouse = mouse.Controller()
         self._backend = self.config.ocr_backend.lower()
         self._rapid: Optional[RapidOCR] = None
-        if self._backend in {"rapidocr", "auto"}:
-            try:
-                self._rapid = RapidOCR()
-            except Exception as exc:
-                if self._backend == "rapidocr":
-                    logger.warning("RapidOCR 初始化失败: %s", exc)
-                else:
-                    logger.warning("RapidOCR 初始化失败，将回退 tesseract: %s", exc)
+        self._rapid_initialized = False
+        self._rapid_lock = threading.Lock()
+        # 延迟初始化 RapidOCR，提升启动速度
         self._slug_lookup = self._build_slug_lookup(repository)
         self._match_cache: dict[str, str] = {}
         self._fuzzy_threshold = 0.8
+        # 复用 mss 实例以提升截图性能
+        self._mss_instance: Optional[mss.mss] = None
+        self._mss_lock = threading.Lock()
+
+    def _get_rapid_ocr(self) -> Optional[RapidOCR]:
+        """
+        延迟初始化 RapidOCR 引擎
+        线程安全的单例模式，避免启动时阻塞
+        """
+        if not self._rapid_initialized:
+            with self._rapid_lock:
+                # 双重检查锁定
+                if not self._rapid_initialized:
+                    if self._backend in {"rapidocr", "auto"}:
+                        try:
+                            logger.info("首次使用，正在初始化 RapidOCR 引擎...")
+                            self._rapid = RapidOCR()
+                            logger.info("RapidOCR 引擎初始化成功")
+                        except Exception as exc:
+                            if self._backend == "rapidocr":
+                                logger.warning("RapidOCR 初始化失败: %s", exc)
+                            else:
+                                logger.warning("RapidOCR 初始化失败，将回退 tesseract: %s", exc)
+                    self._rapid_initialized = True
+        return self._rapid
+
+    def _get_mss(self) -> mss.mss:
+        """
+        获取复用的 mss 实例
+        线程安全，提升截图性能
+        """
+        with self._mss_lock:
+            if self._mss_instance is None:
+                self._mss_instance = mss.mss()
+            return self._mss_instance
 
     def _build_slug_lookup(self, repository: MapRepository | None) -> dict[str, str]:
         slug_lookup: dict[str, str] = {}
@@ -107,9 +138,9 @@ class OcrService:
         return slug_lookup
 
     def capture_text(self) -> OCRResult | None:
-        with mss.mss() as sct:
-            bbox = self._compute_bbox(sct)
-            shot = sct.grab(bbox)
+        sct = self._get_mss()
+        bbox = self._compute_bbox(sct)
+        shot = sct.grab(bbox)
         image = Image.frombytes("RGB", shot.size, shot.rgb)
         self._maybe_save_debug(image)
         raw_text = self._do_ocr(image) or ""
@@ -141,11 +172,11 @@ class OcrService:
         """
         logger.info("开始截取聊天框区域: left=%d, top=%d, width=%d, height=%d", left, top, width, height)
 
-        with mss.mss() as sct:
-            bbox = {"left": left, "top": top, "width": width, "height": height}
-            logger.info("mss截图bbox: %s", bbox)
-            shot = sct.grab(bbox)
-            logger.info("实际截取区域: left=%d, top=%d, width=%d, height=%d", shot.left, shot.top, shot.width, shot.height)
+        sct = self._get_mss()
+        bbox = {"left": left, "top": top, "width": width, "height": height}
+        logger.info("mss截图bbox: %s", bbox)
+        shot = sct.grab(bbox)
+        logger.info("实际截取区域: left=%d, top=%d, width=%d, height=%d", shot.left, shot.top, shot.width, shot.height)
 
         image = Image.frombytes("RGB", shot.size, shot.rgb)
         self._maybe_save_debug(image, prefix="chat")
@@ -183,12 +214,13 @@ class OcrService:
         return ""
 
     def _run_rapidocr(self, image: Image.Image) -> str:
-        if self._rapid is None:
+        rapid = self._get_rapid_ocr()
+        if rapid is None:
             logger.warning("RapidOCR backend 未正确初始化，无法执行 rapidocr OCR")
             return ""
         img_np = np.array(image.convert("RGB"))
         try:
-            rec_res = self._rapid(img_np)
+            rec_res = rapid(img_np)
         except Exception as exc:
             logger.warning("RapidOCR 调用失败: %s", exc)
             return ""
@@ -397,7 +429,15 @@ class OcrService:
         return bbox
 
     def close(self) -> None:
-        pass
+        """清理资源"""
+        with self._mss_lock:
+            if self._mss_instance is not None:
+                try:
+                    self._mss_instance.close()
+                except Exception as exc:
+                    logger.warning("关闭 mss 实例失败: %s", exc)
+                finally:
+                    self._mss_instance = None
 
     def _maybe_save_debug(self, image: Image.Image, prefix: str = "ocr_capture") -> None:
         if not self.config.ocr_debug:

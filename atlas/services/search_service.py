@@ -27,6 +27,7 @@ class MapSearchService:
         self._cache: OrderedDict[str, List[SearchResult]] = OrderedDict()
         self.max_results = 25
         self.min_chars = 2
+        self._cache_size = 256  # 增加缓存容量以提升重复搜索性能
 
     def refresh(self) -> None:
         self.repository.ensure_loaded()
@@ -102,6 +103,10 @@ class MapSearchService:
         if num_parts < 2 or num_parts > 3:
             return 0.0
 
+        # 早期剪枝：查询长度太短或太长
+        if len(query) < num_parts or len(query) > sum(len(p) for p in parts):
+            return 0.0
+
         # 尝试不同的拆分方式
         best_score = 0.0
 
@@ -109,7 +114,12 @@ class MapSearchService:
             # 两段地图名：尝试所有可能的拆分点
             for split_pos in range(1, len(query)):
                 q1, q2 = query[:split_pos], query[split_pos:]
-                if self._is_prefix_or_contains(parts[0], q1) and self._is_prefix_or_contains(parts[1], q2):
+
+                # 早期剪枝：检查第一段是否可能匹配
+                if not self._is_prefix_or_contains(parts[0], q1):
+                    continue
+
+                if self._is_prefix_or_contains(parts[1], q2):
                     # 计算得分：前缀匹配得分更高
                     score = 0.0
                     if parts[0].startswith(q1):
@@ -125,13 +135,19 @@ class MapSearchService:
                     best_score = max(best_score, score)
 
         elif num_parts == 3:
-            # 三段地图名：尝试两个拆分点
+            # 三段地图名：尝试两个拆分点，增加早期剪枝
             for split1 in range(1, len(query) - 1):
+                q1 = query[:split1]
+
+                # 早期剪枝：第一段必须可能匹配
+                if not self._is_prefix_or_contains(parts[0], q1):
+                    continue
+
                 for split2 in range(split1 + 1, len(query)):
-                    q1, q2, q3 = query[:split1], query[split1:split2], query[split2:]
+                    q2, q3 = query[split1:split2], query[split2:]
+
                     if (
-                        self._is_prefix_or_contains(parts[0], q1)
-                        and self._is_prefix_or_contains(parts[1], q2)
+                        self._is_prefix_or_contains(parts[1], q2)
                         and self._is_prefix_or_contains(parts[2], q3)
                     ):
                         # 计算得分
@@ -177,5 +193,5 @@ class MapSearchService:
 
     def _remember(self, query: str, results: List[SearchResult]) -> None:
         self._cache[query] = results
-        if len(self._cache) > 64:
+        if len(self._cache) > self._cache_size:
             self._cache.popitem(last=False)

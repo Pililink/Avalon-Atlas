@@ -179,12 +179,16 @@ class MainWindow(QtWidgets.QMainWindow):
         self.resize(480, 760)
         self._preview_label = QtWidgets.QLabel(self)
         self._preview_label.setWindowFlags(
-            QtCore.Qt.WindowType.ToolTip
+            QtCore.Qt.WindowType.Tool
             | QtCore.Qt.WindowType.FramelessWindowHint
             | QtCore.Qt.WindowType.NoDropShadowWindowHint
+            | QtCore.Qt.WindowType.WindowStaysOnTopHint
         )
         self._preview_label.setAttribute(
             QtCore.Qt.WidgetAttribute.WA_ShowWithoutActivating, True
+        )
+        self._preview_label.setAttribute(
+            QtCore.Qt.WidgetAttribute.WA_AlwaysStackOnTop, True
         )
         self._preview_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self._preview_label.setStyleSheet(
@@ -619,11 +623,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._reposition_preview()
 
     def _reposition_preview(self) -> None:
-        if (
-            not self._preview_label
-            or not self._preview_label.isVisible()
-            or self._preview_pixmap is None
-        ):
+        if not self._preview_label or self._preview_pixmap is None:
             return
 
         size = self._preview_pixmap.size()
