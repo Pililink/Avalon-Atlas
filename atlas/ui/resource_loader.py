@@ -59,3 +59,7 @@ class ResourceLoader:
             if path.exists():
                 return QtGui.QPixmap(str(path))
         return QtGui.QPixmap()
+
+    def get_asset_path(self, filename: str) -> Path:
+        """获取资源文件路径"""
+        return self.static_root / "assets" / filename

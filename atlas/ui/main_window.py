@@ -280,6 +280,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _build_ui(self) -> None:
         self.setWindowTitle("Avalon Atlas")
+
+        # 设置窗口图标
+        icon_path = self.resource_loader.get_asset_path("icon.ico")
+        if icon_path.exists():
+            self.setWindowIcon(QtGui.QIcon(str(icon_path)))
+
         central = QtWidgets.QWidget()
         layout = QtWidgets.QVBoxLayout(central)
         layout.setContentsMargins(8, 8, 8, 8)
