@@ -119,8 +119,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self._connect_signals()
         self._populate_all_records(initial=True)
 
-        self.hotkeyText.connect(self._handle_hotkey_text)
-        self.chatRegionTrigger.connect(self._show_region_selector)
+        self.hotkeyText.connect(self._handle_hotkey_text, QtCore.Qt.ConnectionType.QueuedConnection)
+        self.chatRegionTrigger.connect(self._show_region_selector, QtCore.Qt.ConnectionType.QueuedConnection)
         self.hotkey_service.set_callback(self.hotkeyText.emit)
         try:
             self.hotkey_service.start()
@@ -270,6 +270,7 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         self._preview_label.hide()
 
+    @QtCore.Slot(str, int)
     def _show_status_message(self, message: str, duration: int = 2000) -> None:
         """在底部按钮区域显示状态消息"""
         self.status_label.setText(message)
@@ -308,10 +309,10 @@ class MainWindow(QtWidgets.QMainWindow):
                     self.config.chat_hotkey,
                     lambda _: self.chatRegionTrigger.emit()
                 )
-                self.statusBar().showMessage("设置已保存并生效", 2000)
+                self._show_status_message("设置已保存并生效", 2000)
             except Exception as exc:
                 logger.error("更新热键失败: %s", exc)
-                self.statusBar().showMessage(f"热键更新失败: {exc}", 3000)
+                self._show_status_message(f"热键更新失败: {exc}", 3000)
 
     def _toggle_always_on_top(self, checked: bool) -> None:
         """切换窗口置顶状态"""
@@ -450,11 +451,11 @@ class MainWindow(QtWidgets.QMainWindow):
     def _handle_hotkey_text(self, text: str) -> None:
         normalized = text.strip()
         if not normalized:
-            self.statusBar().showMessage("OCR 未识别到有效文本", 3000)
+            self._show_status_message("OCR 未识别到有效文本", 3000)
             return
 
         # 显示OCR识别的文本
-        self.statusBar().showMessage(f"OCR 识别: {normalized}", 5000)
+        self._show_status_message(f"OCR 识别: {normalized}", 5000)
         logger.info("鼠标 OCR 识别: %s", normalized)
 
         self._popup_container.hide()
@@ -700,8 +701,8 @@ class MainWindow(QtWidgets.QMainWindow):
         except Exception as exc:
             logger.exception("聊天框 OCR 失败: %s", exc)
             QtCore.QMetaObject.invokeMethod(
-                self.statusBar(),
-                "showMessage",
+                self,
+                "_show_status_message",
                 QtCore.Qt.ConnectionType.QueuedConnection,
                 QtCore.Q_ARG(str, f"聊天框 OCR 失败: {exc}"),
                 QtCore.Q_ARG(int, 5000),
@@ -711,8 +712,8 @@ class MainWindow(QtWidgets.QMainWindow):
         if not result:
             logger.info("聊天框 OCR 未识别到内容")
             QtCore.QMetaObject.invokeMethod(
-                self.statusBar(),
-                "showMessage",
+                self,
+                "_show_status_message",
                 QtCore.Qt.ConnectionType.QueuedConnection,
                 QtCore.Q_ARG(str, "聊天框 OCR 未识别到内容"),
                 QtCore.Q_ARG(int, 3000),
@@ -726,8 +727,8 @@ class MainWindow(QtWidgets.QMainWindow):
         if not result.map_names:
             logger.info("聊天框 OCR 未从原始文本中提取到地图名")
             QtCore.QMetaObject.invokeMethod(
-                self.statusBar(),
-                "showMessage",
+                self,
+                "_show_status_message",
                 QtCore.Qt.ConnectionType.QueuedConnection,
                 QtCore.Q_ARG(str, f"OCR原始: {raw_text_preview} | 未识别到地图名"),
                 QtCore.Q_ARG(int, 5000),
@@ -739,8 +740,8 @@ class MainWindow(QtWidgets.QMainWindow):
         # 在状态栏显示原始文本和识别结果
         status_msg = f"OCR原始: {raw_text_preview} | 识别到 {len(result.map_names)} 个地图: {', '.join(result.map_names)}"
         QtCore.QMetaObject.invokeMethod(
-            self.statusBar(),
-            "showMessage",
+            self,
+            "_show_status_message",
             QtCore.Qt.ConnectionType.QueuedConnection,
             QtCore.Q_ARG(str, status_msg),
             QtCore.Q_ARG(int, 8000),

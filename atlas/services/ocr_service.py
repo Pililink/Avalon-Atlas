@@ -10,7 +10,7 @@ from typing import Optional, Sequence
 
 import mss
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageEnhance, ImageFilter
 from pynput import mouse
 
 try:
@@ -76,9 +76,6 @@ class OcrService:
         self._slug_lookup = self._build_slug_lookup(repository)
         self._match_cache: dict[str, str] = {}
         self._fuzzy_threshold = 0.8
-        # 复用 mss 实例以提升截图性能
-        self._mss_instance: Optional[mss.mss] = None
-        self._mss_lock = threading.Lock()
 
     def _get_rapid_ocr(self) -> Optional[RapidOCR]:
         """
@@ -102,15 +99,6 @@ class OcrService:
                     self._rapid_initialized = True
         return self._rapid
 
-    def _get_mss(self) -> mss.mss:
-        """
-        获取复用的 mss 实例
-        线程安全，提升截图性能
-        """
-        with self._mss_lock:
-            if self._mss_instance is None:
-                self._mss_instance = mss.mss()
-            return self._mss_instance
 
     def _build_slug_lookup(self, repository: MapRepository | None) -> dict[str, str]:
         slug_lookup: dict[str, str] = {}
@@ -137,13 +125,58 @@ class OcrService:
         logger.info("OCR map name lookup 构建完成，共 %s 条", len(slug_lookup))
         return slug_lookup
 
+    def _preprocess_image(self, image: Image.Image) -> Image.Image:
+        """
+        预处理图像以提高 OCR 识别率
+
+        处理步骤：
+        1. 转换为灰度图
+        2. 增强对比度
+        3. 锐化
+        4. 可选：二值化
+        """
+        # 转换为灰度图
+        if image.mode != 'L':
+            image = image.convert('L')
+
+        # 增强对比度（提高文字与背景的区分度）
+        enhancer = ImageEnhance.Contrast(image)
+        image = enhancer.enhance(2.0)  # 对比度增强2倍
+
+        # 增强亮度
+        enhancer = ImageEnhance.Brightness(image)
+        image = enhancer.enhance(1.2)  # 亮度增强1.2倍
+
+        # 锐化边缘
+        image = image.filter(ImageFilter.SHARPEN)
+
+        # 可选：二值化（将图像转换为纯黑白）
+        # 这对某些字体效果很好
+        # threshold = 128
+        # image = image.point(lambda x: 255 if x > threshold else 0, mode='1')
+
+        return image
+
     def capture_text(self) -> OCRResult | None:
-        sct = self._get_mss()
-        bbox = self._compute_bbox(sct)
-        shot = sct.grab(bbox)
-        image = Image.frombytes("RGB", shot.size, shot.rgb)
-        self._maybe_save_debug(image)
-        raw_text = self._do_ocr(image) or ""
+        # 每次创建新的 mss 实例，避免跨线程问题
+        with mss.mss() as sct:
+            bbox = self._compute_bbox(sct)
+            shot = sct.grab(bbox)
+            image = Image.frombytes("RGB", shot.size, shot.rgb)
+
+        # 保存原始图像用于调试
+        if self.config.ocr_debug:
+            self._maybe_save_debug(image, prefix="ocr_original")
+
+        # 预处理图像
+        processed_image = self._preprocess_image(image)
+
+        # 保存预处理后的图像用于调试
+        if self.config.ocr_debug:
+            self._maybe_save_debug(processed_image, prefix="ocr_processed")
+
+        # 使用预处理后的图像进行 OCR
+        raw_text = self._do_ocr(processed_image) or ""
 
         # 提取所有地图名
         map_names = self._extract_all_map_names(raw_text)
@@ -172,17 +205,27 @@ class OcrService:
         """
         logger.info("开始截取聊天框区域: left=%d, top=%d, width=%d, height=%d", left, top, width, height)
 
-        sct = self._get_mss()
-        bbox = {"left": left, "top": top, "width": width, "height": height}
-        logger.info("mss截图bbox: %s", bbox)
-        shot = sct.grab(bbox)
-        logger.info("实际截取区域: left=%d, top=%d, width=%d, height=%d", shot.left, shot.top, shot.width, shot.height)
+        # 每次创建新的 mss 实例，避免跨线程问题
+        with mss.mss() as sct:
+            bbox = {"left": left, "top": top, "width": width, "height": height}
+            logger.info("mss截图bbox: %s", bbox)
+            shot = sct.grab(bbox)
+            logger.info("实际截取区域: left=%d, top=%d, width=%d, height=%d", shot.left, shot.top, shot.width, shot.height)
+            image = Image.frombytes("RGB", shot.size, shot.rgb)
 
-        image = Image.frombytes("RGB", shot.size, shot.rgb)
-        self._maybe_save_debug(image, prefix="chat")
+        # 保存原始图像用于调试
+        if self.config.ocr_debug:
+            self._maybe_save_debug(image, prefix="chat_original")
 
-        # 识别文本
-        raw_text = self._do_ocr(image) or ""
+        # 预处理图像
+        processed_image = self._preprocess_image(image)
+
+        # 保存预处理后的图像用于调试
+        if self.config.ocr_debug:
+            self._maybe_save_debug(processed_image, prefix="chat_processed")
+
+        # 识别文本 - 使用预处理后的图像
+        raw_text = self._do_ocr(processed_image) or ""
         logger.info("聊天框 OCR 识别到的文本: %s", raw_text)
         # 从文本中提取所有地图名
         map_names = self._extract_all_map_names(raw_text)
@@ -430,14 +473,8 @@ class OcrService:
 
     def close(self) -> None:
         """清理资源"""
-        with self._mss_lock:
-            if self._mss_instance is not None:
-                try:
-                    self._mss_instance.close()
-                except Exception as exc:
-                    logger.warning("关闭 mss 实例失败: %s", exc)
-                finally:
-                    self._mss_instance = None
+        # mss 实例现在每次使用后立即关闭，无需在此处理
+        pass
 
     def _maybe_save_debug(self, image: Image.Image, prefix: str = "ocr_capture") -> None:
         if not self.config.ocr_debug:
