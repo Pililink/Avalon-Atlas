@@ -35,6 +35,11 @@ class RegionSelector(QtWidgets.QWidget):
 
     def showFullScreen(self) -> None:
         """显示全屏选择器"""
+        # 重置选择状态，确保每次都是干净的状态
+        self._start_pos = None
+        self._current_pos = None
+        self._is_selecting = False
+
         # 获取所有屏幕的总区域
         screens = QtWidgets.QApplication.screens()
         if not screens:
