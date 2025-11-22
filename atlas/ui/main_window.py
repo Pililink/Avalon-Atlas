@@ -14,6 +14,7 @@ from ..logger import get_logger
 from ..services.hotkey_service import HotkeyService
 from ..services.ocr_service import OcrService
 from ..services.search_service import MapSearchService, SearchResult
+from ..services.update_checker import UpdateChecker, UpdateInfo
 from .region_selector import RegionSelector
 from .resource_loader import ResourceLoader
 from .settings_dialog import SettingsDialog
@@ -114,6 +115,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.results: List[SearchResult] = []
         self._item_by_slug: dict[str, QtWidgets.QListWidgetItem] = {}
         self._region_selector: Optional[RegionSelector] = None
+        self._update_checker = UpdateChecker()
 
         self._build_ui()
         self._connect_signals()
@@ -143,6 +145,9 @@ class MainWindow(QtWidgets.QMainWindow):
             # 延迟应用置顶，等待窗口完全初始化
             QtCore.QTimer.singleShot(100, self._apply_initial_always_on_top)
 
+        # 延迟检查更新（启动后 2 秒）
+        QtCore.QTimer.singleShot(2000, self._check_for_updates)
+
     def _apply_initial_always_on_top(self) -> None:
         """初始化时应用置顶设置"""
         if sys.platform == "win32":
@@ -164,6 +169,114 @@ class MainWindow(QtWidgets.QMainWindow):
             self.setWindowFlags(self.windowFlags() | QtCore.Qt.WindowType.WindowStaysOnTopHint)
             self.show()
             logger.info("从配置加载窗口置顶状态: 已启用")
+
+    def _check_for_updates(self) -> None:
+        """检查更新"""
+        logger.info("开始检查更新")
+        self._update_checker.check_update_async(self._handle_update_result)
+
+    @QtCore.Slot(object)
+    def _handle_update_result(self, update_info: Optional[UpdateInfo]) -> None:
+        """处理更新检查结果"""
+        if update_info is None:
+            logger.info("更新检查完成: 无法获取更新信息")
+            return
+
+        if not update_info.has_update:
+            logger.info("更新检查完成: 当前已是最新版本")
+            return
+
+        # 有新版本可用
+        logger.info("发现新版本: %s", update_info.latest_version)
+
+        # 在主线程显示更新提示
+        QtCore.QMetaObject.invokeMethod(
+            self,
+            "_show_update_dialog",
+            QtCore.Qt.ConnectionType.QueuedConnection,
+            QtCore.Q_ARG(object, update_info),
+        )
+
+    @QtCore.Slot(object)
+    def _show_update_dialog(self, update_info: UpdateInfo) -> None:
+        """显示更新对话框"""
+        # 构建更新消息
+        message = f"""
+<h3>发现新版本 v{update_info.latest_version}</h3>
+<p>当前版本: v{update_info.current_version}</p>
+
+<h4>更新说明:</h4>
+<p style="white-space: pre-wrap;">{self._format_release_notes(update_info.release_notes)}</p>
+
+<p><b>下载地址:</b><br>
+<a href="{update_info.download_url}">{update_info.download_url}</a></p>
+
+<p><b>查看详情:</b><br>
+<a href="{update_info.release_url}">{update_info.release_url}</a></p>
+"""
+
+        msg_box = QtWidgets.QMessageBox(self)
+        msg_box.setWindowTitle("更新提示")
+        msg_box.setTextFormat(QtCore.Qt.TextFormat.RichText)
+        msg_box.setText(message)
+        msg_box.setIcon(QtWidgets.QMessageBox.Icon.Information)
+        msg_box.setStandardButtons(
+            QtWidgets.QMessageBox.StandardButton.Ok | QtWidgets.QMessageBox.StandardButton.Ignore
+        )
+        msg_box.setDefaultButton(QtWidgets.QMessageBox.StandardButton.Ok)
+        msg_box.setTextInteractionFlags(
+            QtCore.Qt.TextInteractionFlag.TextBrowserInteraction
+        )
+
+        # 修改按钮文本
+        ok_button = msg_box.button(QtWidgets.QMessageBox.StandardButton.Ok)
+        if ok_button:
+            ok_button.setText("前往下载")
+
+        ignore_button = msg_box.button(QtWidgets.QMessageBox.StandardButton.Ignore)
+        if ignore_button:
+            ignore_button.setText("稍后提醒")
+
+        result = msg_box.exec()
+
+        # 如果点击"前往下载"，打开下载链接
+        if result == QtWidgets.QMessageBox.StandardButton.Ok:
+            import webbrowser
+            webbrowser.open(update_info.download_url)
+
+    def _format_release_notes(self, notes: str) -> str:
+        """格式化发布说明"""
+        if not notes:
+            return "暂无更新说明"
+
+        # 简单的 Markdown 转 HTML（基础支持）
+        lines = notes.split('\n')
+        formatted_lines = []
+
+        for line in lines[:10]:  # 最多显示 10 行
+            # 转义 HTML 特殊字符
+            line = line.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+
+            # 标题
+            if line.startswith('# '):
+                line = f'<b>{line[2:]}</b>'
+            elif line.startswith('## '):
+                line = f'<b>{line[3:]}</b>'
+            elif line.startswith('### '):
+                line = f'<b>{line[4:]}</b>'
+            # 列表
+            elif line.strip().startswith('- '):
+                line = '  • ' + line.strip()[2:]
+            elif line.strip().startswith('* '):
+                line = '  • ' + line.strip()[2:]
+
+            formatted_lines.append(line)
+
+        result = '\n'.join(formatted_lines)
+        if len(lines) > 10:
+            result += '\n...'
+
+        return result
 
     def _build_ui(self) -> None:
         self.setWindowTitle("Avalon Atlas")

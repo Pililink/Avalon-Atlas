@@ -19,6 +19,30 @@ START_OF_STRING_BONUS = 4.0
 GAP_PENALTY = 2.0
 NON_ALNUM_CHARS: Sequence[str] = ("-", "_", " ", "/")
 
+# 相似字符映射 - 用于处理容易混淆的字符
+SIMILAR_CHARS = {
+    'i': {'i', 'l', '1', '|'},
+    'l': {'i', 'l', '1', '|'},
+    '1': {'i', 'l', '1', '|'},
+    '|': {'i', 'l', '1', '|'},
+    'o': {'o', '0'},
+    '0': {'o', '0'},
+    's': {'s', '5'},
+    '5': {'s', '5'},
+    'z': {'z', '2'},
+    '2': {'z', '2'},
+}
+
+
+def _chars_match(ch1: str, ch2: str) -> bool:
+    """判断两个字符是否匹配（完全相等或相似）"""
+    if ch1 == ch2:
+        return True
+    similar_set = SIMILAR_CHARS.get(ch1)
+    if similar_set and ch2 in similar_set:
+        return True
+    return False
+
 
 def subsequence_match(query: str, candidate: str) -> MatchDetail | None:
     """
@@ -42,7 +66,7 @@ def subsequence_match(query: str, candidate: str) -> MatchDetail | None:
     backtrack: List[List[int]] = [[-1] * n for _ in range(m)]
 
     for j, ch in enumerate(target):
-        if ch == pattern[0]:
+        if _chars_match(pattern[0], ch):
             dp[0][j] = _score_position(candidate, j, prev_idx=-1)
 
     if max(dp[0]) == neg_inf:
@@ -50,7 +74,7 @@ def subsequence_match(query: str, candidate: str) -> MatchDetail | None:
 
     for i in range(1, m):
         for j, ch in enumerate(target):
-            if ch != pattern[i]:
+            if not _chars_match(pattern[i], ch):
                 continue
             best_score = neg_inf
             best_prev = -1
