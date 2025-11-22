@@ -510,6 +510,7 @@ class MainWindow(QtWidgets.QMainWindow):
 <h3>📝 手动搜索</h3>
 <ul>
 <li><b>模糊匹配</b>：输入地图名称的一部分即可搜索（如输入 "hirexo" 匹配 "Hiros-Exelos"）</li>
+<li><b>字符相似性</b>：自动处理易混淆字符（i/l/1/|, o/0, s/5, z/2），提升匹配准确率</li>
 <li><b>缩写查询</b>：支持缩写搜索，自动拆分匹配
   <ul>
     <li>两段地图名：如输入 "souuzu" 匹配 "Soues-Uzurtum"</li>
@@ -524,6 +525,7 @@ class MainWindow(QtWidgets.QMainWindow):
 <h4>1️⃣ 鼠标 OCR（推荐热键：Ctrl+Shift+Q）</h4>
 <ul>
 <li>将鼠标移动到传送门图标处游戏内弹出地图名后，按下热键自动识别</li>
+<li>支持图像预处理（灰度化、对比度增强、锐化），提升识别率</li>
 </ul>
 
 <h4>2️⃣ 聊天框 OCR（推荐热键：Ctrl+Shift+W）</h4>
@@ -536,8 +538,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
 <h3>💡 高级技巧</h3>
 <ul>
+<li><b>自动更新</b>：程序启动时自动检查 GitHub 新版本，发现更新后提示下载</li>
 <li><b>调试模式</b>：在设置中开启"OCR调试"，查看识别截图和原始文本（保存在 debug/ 文件夹）</li>
-<li><b>查看日志</b>：状态栏会显示OCR识别的原始文本和匹配结果</li>
+<li><b>查看日志</b>：状态栏会显示OCR识别的原始文本和匹配结果，详细日志保存在 debug/avalon_atlas.log</li>
 <li><b>缩写查询</b>：OCR 识别到的缩写文本也能自动匹配完整地图名</li>
 <li><b>批量添加</b>：使用聊天框 OCR 可一次添加多个地图</li>
 <li><b>配置备份</b>：配置文件储存在程序目录的 config.json，方便备份同步</li>

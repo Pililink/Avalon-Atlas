@@ -48,7 +48,7 @@ class AppConfig(BaseModel):
     ocr_debug: bool = Field(default=True, description="是否输出 OCR 截图以便调试")
     debug_dir: Path = Field(default=DEBUG_DIR)
     hotkey: str = Field(default="ctrl+shift+q", description="触发 OCR 的热键组合")
-    chat_hotkey: str = Field(default="ctrl+alt+w", description="触发聊天框区域选择的热键组合")
+    chat_hotkey: str = Field(default="ctrl+shift+w", description="触发聊天框区域选择的热键组合")
     debounce_ms: int = Field(default=200, ge=0)
     always_on_top: bool = Field(default=False, description="窗口是否始终保持在最前")
     config_path: Optional[Path] = Field(default=None, exclude=True, description="当前配置文件路径")

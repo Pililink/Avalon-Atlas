@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-1.0.2-blue.svg)
+![Version](https://img.shields.io/badge/version-1.0.3-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows-lightgrey.svg)
 
@@ -19,23 +19,25 @@
 Avalon Atlas 是一款专为阿瓦隆在线（Albion Online）玩家设计的桌面端辅助工具，用于快速查询地图的箱子、资源、洞穴等详细信息。
 
 支持两种查询方式：
-- 🔍 **手动输入**：智能模糊搜索，支持拼写容错
+- 🔍 **手动输入**：智能模糊搜索，支持拼写容错和字符相似性匹配
 - ⌨️ **双热键 OCR**：游戏内一键截图识别地图名称，支持鼠标识别和聊天框区域识别
 
 ## ✨ 核心特性
 
 ### 🎯 智能搜索
 - **子序列模糊匹配**：内置动态规划评分算法，即使输入不完整也能精准匹配
+- **字符相似性匹配**：自动处理容易混淆的字符（i/l/1/|, o/0, s/5, z/2）
 - **高亮显示**：搜索结果自动高亮匹配字符
 - **实时预览**：鼠标悬停显示地图完整大图
 - **快速排序**：按匹配度、地图等级智能排序
 
 ### 🖼️ 双热键 OCR 识别
 - **鼠标 OCR**：全局热键截图识别地图名称（默认 `Ctrl+Shift+Q`）
-- **聊天框 OCR**：框选区域批量识别多个地图名（默认 `Ctrl+Alt+W`）
+- **聊天框 OCR**：框选区域批量识别多个地图名（默认 `Ctrl+Shift+W`）
+- **图像预处理**：灰度化、对比度增强、锐化处理，提升识别率
 - **智能矫正**：自动修正 OCR 常见识别错误（数字→字母）
 - **双引擎支持**：RapidOCR（默认）或 Tesseract 可选
-- **调试模式**：可保存截图用于排查识别问题
+- **调试模式**：保存原始截图和预处理后图像用于排查问题
 
 ### 📊 数据展示
 - **地图详情**：箱子数量、洞穴类型、资源分布、兔子洞数量
@@ -46,10 +48,21 @@ Avalon Atlas 是一款专为阿瓦隆在线（Albion Online）玩家设计的桌
 
 ### 🎨 用户界面
 - **现代化设计**：基于 PySide6 (Qt6) 构建
+- **窗口图标**：任务栏和标题栏显示应用图标
 - **窗口置顶**：一键置顶功能，方便游戏内查看
 - **响应式布局**：自适应窗口大小
 - **深色主题**：护眼舒适的配色方案
 - **内联消息**：状态消息显示在按钮区域，节省垂直空间
+
+### 🔄 自动更新
+- **版本检查**：启动时自动检查 GitHub Releases 新版本
+- **一键下载**：发现新版本时提供下载链接
+- **更新说明**：显示详细的版本更新内容
+
+### 📝 日志系统
+- **文件日志**：自动保存日志到 `debug/avalon_atlas.log`
+- **日志轮转**：10MB 单文件大小，保留最近 5 个备份
+- **调试信息**：OCR 识别过程、搜索匹配、错误堆栈等详细记录
 
 ---
 
@@ -65,8 +78,8 @@ Avalon Atlas 是一款专为阿瓦隆在线（Albion Online）玩家设计的桌
 
 #### 方式一：下载发行版（推荐）
 
-1. 前往 [Releases](https://github.com/yourname/atlas/releases) 页面
-2. 下载最新版本的 `AvalonAtlas-v1.0.2-portable.zip`
+1. 前往 [Releases](https://github.com/Pililink/Avalon-Atlas/releases) 页面
+2. 下载最新版本的 `AvalonAtlas-v1.0.3-portable.zip`
 3. 解压到任意目录（建议路径不含中文）
 4. 双击 `AvalonAtlas.exe` 启动
 
@@ -74,17 +87,20 @@ Avalon Atlas 是一款专为阿瓦隆在线（Albion Online）玩家设计的桌
 
 ```bash
 # 克隆仓库
-git clone https://github.com/yourname/atlas.git
-cd atlas
+git clone https://github.com/Pililink/Avalon-Atlas.git
+cd Avalon-Atlas
 
-# 安装依赖 (需要 Python 3.12+)
+# 安装 uv（推荐）或使用 pip
+# 使用 uv (推荐)
+uv sync
+uv run python main.py
+
+# 或使用 pip
 pip install -r requirements.txt
-
-# 运行程序
 python main.py
 
-# 或构建可执行文件
-python build.py
+# 构建可执行文件
+uv run python build.py  # 或 python build.py
 # 输出在 dist/AvalonAtlas/ 目录
 ```
 
@@ -122,6 +138,7 @@ python build.py
 **搜索技巧**：
 - 输入 `cas` 可以匹配 `casos-aiagsum`
 - 输入 `ca-ai` 可以匹配 `casos-aiagsum`
+- 输入 `i` 可以匹配包含 `l`、`1`、`|` 的地图名（字符相似性）
 - 不区分大小写
 - 支持拼写容错（如 `c4s0s` 会自动矫正为 `casos`）
 
@@ -134,8 +151,8 @@ python build.py
 4. 程序自动截取鼠标上方区域识别文字
 5. 识别成功后自动添加到已选列表
 
-#### 聊天框 OCR（推荐热键：Ctrl+Alt+W）
-1. 按下设置的热键（默认 `Ctrl+Alt+W`）
+#### 聊天框 OCR（推荐热键：Ctrl+Shift+W）
+1. 按下设置的热键（默认 `Ctrl+Shift+W`）
 2. 拖动鼠标框选聊天框区域
 3. 自动识别区域内所有地图名
 4. 支持标准地图名和缩写格式（前 3 字符）
@@ -144,9 +161,10 @@ python build.py
 **OCR 最佳实践**：
 - **鼠标 OCR**：鼠标放在地图名称正下方（距离约 1-2 厘米）
 - **聊天框 OCR**：框选范围要完整包含地图名称
+- **调试模式**：开启后会保存原始截图和预处理后的图像到 `debug/` 目录
 - 确保地图名称清晰可见，无遮挡
 - 避免在名称上有光标或高亮
-- 如识别失败，可在 `debug/` 目录查看截图
+- 如识别失败，可查看 `debug/` 目录的截图和日志文件 `debug/avalon_atlas.log`
 
 ### 窗口置顶
 
@@ -179,16 +197,16 @@ python build.py
   "maps_data_path": "static/data/maps.json",  // 地图数据文件路径
   "static_root": "static",                     // 静态资源目录
   "hotkey": "ctrl+shift+q",                    // 鼠标 OCR 热键
-  "chat_hotkey": "ctrl+alt+w",                 // 聊天框 OCR 热键
+  "chat_hotkey": "ctrl+shift+w",               // 聊天框 OCR 热键
   "debounce_ms": 200,                          // 搜索防抖延迟(毫秒)
   "always_on_top": false,                      // 窗口是否始终置顶
   "ocr_backend": "rapidocr",                   // OCR 引擎: rapidocr/tesseract/auto
   "ocr_region": {
     "width": 600,                              // 截图宽度
-    "height": 60,                              // 截图高度
+    "height": 80,                              // 截图高度
     "vertical_offset": 0                       // 垂直偏移量
   },
-  "ocr_debug": false,                          // 是否保存 OCR 截图到 debug/
+  "ocr_debug": true,                           // 是否保存 OCR 截图到 debug/
   "debug_dir": "debug"                         // 调试文件保存目录
 }
 ```
@@ -204,17 +222,29 @@ python build.py
 #### OCR 区域调整
 
 - `width`: 截图宽度，默认 600px（覆盖大部分地图名称）
-- `height`: 截图高度，默认 60px（单行文本）
+- `height`: 截图高度，默认 80px（单行文本）
 - `vertical_offset`: 向上偏移，默认 0（鼠标在底边中点）
 
 如识别效果不佳，可尝试调整这些参数。
 
 #### 调试模式
 
-开启 `ocr_debug: true` 后，每次 OCR 会保存截图到 `debug/` 目录，文件名包含时间戳。可用于：
+开启 `ocr_debug: true` 后（默认开启），每次 OCR 会保存原始截图和预处理后的图像到 `debug/` 目录，文件名包含时间戳。可用于：
 - 检查截图范围是否正确
+- 对比原始图像和预处理后的效果
 - 排查 OCR 识别问题
 - 调整 `ocr_region` 参数
+
+#### 日志文件
+
+程序运行日志保存在 `debug/avalon_atlas.log`，包含：
+- 启动信息和配置加载
+- OCR 识别详细过程
+- 搜索匹配结果
+- 错误堆栈和异常信息
+- 自动更新检查结果
+
+日志文件自动轮转，单个文件最大 10MB，保留最近 5 个备份。
 
 ---
 
@@ -362,7 +392,7 @@ AvalonAtlas/
 
 ### 功能建议
 
-欢迎在 [Issues](https://github.com/yourname/atlas/issues) 提出新功能建议。
+欢迎在 [Issues](https://github.com/Pililink/Avalon-Atlas/issues) 提出新功能建议。
 
 ---
 
