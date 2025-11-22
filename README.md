@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-1.0.3-blue.svg)
+![Version](https://img.shields.io/badge/version-1.0.4-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows-lightgrey.svg)
 
@@ -79,7 +79,7 @@ Avalon Atlas 是一款专为阿瓦隆在线（Albion Online）玩家设计的桌
 #### 方式一：下载发行版（推荐）
 
 1. 前往 [Releases](https://github.com/Pililink/Avalon-Atlas/releases) 页面
-2. 下载最新版本的 `AvalonAtlas-v1.0.3-portable.zip`
+2. 下载最新版本的 `AvalonAtlas-v1.0.4-portable.zip`
 3. 解压到任意目录（建议路径不含中文）
 4. 双击 `AvalonAtlas.exe` 启动
 
