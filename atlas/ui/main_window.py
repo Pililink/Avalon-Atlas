@@ -318,6 +318,9 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         self.selected_list.setMinimumHeight(480)
         self.selected_list.setMouseTracking(True)
+        # 启用右键菜单
+        self.selected_list.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
+        self.selected_list.customContextMenuRequested.connect(self._show_context_menu)
 
         # === 弹出搜索列表 ===
         self._popup_list = QtWidgets.QListWidget()
@@ -697,6 +700,42 @@ class MainWindow(QtWidgets.QMainWindow):
             formatted_text = self._format_map_details(record)
             QtWidgets.QApplication.clipboard().setText(formatted_text)
             self._show_status_message(f"已复制 {record.name} 详细信息", 2000)
+
+    def _show_context_menu(self, pos: QtCore.QPoint) -> None:
+        """显示右键上下文菜单"""
+        item = self.selected_list.itemAt(pos)
+        if not item:
+            return
+
+        menu = QtWidgets.QMenu(self)
+
+        # 复制操作
+        copy_action = menu.addAction("复制详细信息")
+        copy_action.triggered.connect(lambda: self._copy_selected_name(item))
+
+        # 删除操作
+        delete_action = menu.addAction("删除")
+        delete_action.triggered.connect(lambda: self._delete_selected_item(item))
+
+        # 在鼠标位置显示菜单
+        menu.exec(self.selected_list.mapToGlobal(pos))
+
+    def _delete_selected_item(self, item: QtWidgets.QListWidgetItem) -> None:
+        """删除选中的列表项"""
+        result = item.data(QtCore.Qt.ItemDataRole.UserRole)
+        if isinstance(result, SearchResult):
+            slug = result.record.slug
+            # 从字典中移除
+            if slug in self._item_by_slug:
+                del self._item_by_slug[slug]
+
+            # 从列表中移除
+            row = self.selected_list.row(item)
+            self.selected_list.takeItem(row)
+
+            # 更新计数
+            self.selected_label.setText(f"已选 {self.selected_list.count()} 条")
+            self._show_status_message(f"已删除 {result.record.name}", 2000)
 
     def _format_map_details(self, record) -> str:
         """格式化地图详细信息为可读文本"""
