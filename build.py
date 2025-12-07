@@ -48,6 +48,27 @@ def get_version() -> str:
     return namespace.get("__version__", "0.0.0")
 
 
+def _get_qt_plugins_path() -> str | None:
+    """获取 Qt 插件目录路径"""
+    try:
+        import PySide6
+        pyside6_path = Path(PySide6.__file__).parent
+        plugins_path = pyside6_path / "plugins"
+
+        if plugins_path.exists():
+            # 检查是否有 imageformats 插件
+            imageformats = plugins_path / "imageformats"
+            if imageformats.exists():
+                safe_print(f"   📌 找到 Qt 插件目录: {plugins_path}")
+                return str(plugins_path)
+
+        safe_print("   ⚠️  未找到 Qt 插件目录，将依赖 PyInstaller 自动收集")
+        return None
+    except Exception as e:
+        safe_print(f"   ⚠️  查找 Qt 插件失败: {e}")
+        return None
+
+
 def clean_build() -> None:
     """清理旧的构建产物"""
     safe_print("🧹 清理旧构建...")
@@ -78,10 +99,24 @@ def build_executable() -> int:
         str(icon_path),  # 设置应用图标
         "--add-data",
         f"static{os.pathsep}static",
+        # 收集 PySide6 相关模块和插件
+        "--collect-submodules",
+        "PySide6.QtGui",
+        "--collect-submodules",
+        "PySide6.QtCore",
+        "--collect-all",
+        "PySide6",
+        # 收集 OCR 依赖
         "--collect-all",
         "rapidocr_onnxruntime",
+        # 确保包含 Qt 图片格式插件
+        "--add-binary",
+        f"{_get_qt_plugins_path()}/*{os.pathsep}PySide6/plugins" if _get_qt_plugins_path() else "",
         "main.py",
     ]
+
+    # 过滤掉空字符串参数
+    cmd = [arg for arg in cmd if arg]
 
     env = dict(**os.environ)
     env.setdefault("PYINSTALLER_CONFIG_DIR", str(project_root / "build"))
@@ -90,6 +125,7 @@ def build_executable() -> int:
     safe_print("🔨 开始构建可执行文件...")
     safe_print(f"   📌 图标: {icon_path}")
     safe_print(f"   📌 模式: 无控制台窗口 (windowed)")
+    safe_print(f"   📌 Qt 插件: {'已包含' if _get_qt_plugins_path() else '依赖自动收集'}")
     process = subprocess.run(cmd, cwd=project_root, env=env)
 
     if process.returncode == 0:
@@ -122,6 +158,32 @@ def verify_build() -> bool:
         else:
             safe_print(f"   ✗ 缺失: {file_path.relative_to(dist_dir)}")
             all_ok = False
+
+    # 检查地图文件数量
+    maps_dir = internal_dir / "static" / "maps"
+    if maps_dir.exists():
+        png_files = list(maps_dir.glob("*.png"))
+        webp_files = list(maps_dir.glob("*.webp"))
+        total_files = len(png_files) + len(webp_files)
+
+        safe_print(f"   ℹ️  地图文件: {len(png_files)} PNG, {len(webp_files)} WebP (共 {total_files} 个)")
+
+        # 期望至少有 700 个文件（400 PNG + 400 WebP，允许一些容错）
+        if total_files < 700:
+            safe_print(f"   ⚠️  地图文件数量不足 (期望 ~800，实际 {total_files})，请检查打包")
+            all_ok = False
+    else:
+        safe_print(f"   ✗ 地图目录不存在")
+        all_ok = False
+
+    # 检查 Qt 插件
+    qt_plugins_dir = internal_dir / "PySide6" / "plugins" / "imageformats"
+    if qt_plugins_dir.exists():
+        plugin_files = list(qt_plugins_dir.glob("*"))
+        safe_print(f"   ✓ Qt 图片插件: {len(plugin_files)} 个")
+    else:
+        safe_print(f"   ⚠️  未找到 Qt 图片插件目录，图片加载可能失败")
+        # 不标记为失败，因为 PyInstaller 可能以其他方式处理
 
     # 检查可执行文件大小
     if exe_path.exists():
