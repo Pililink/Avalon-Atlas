@@ -1,9 +1,14 @@
 # -*- mode: python ; coding: utf-8 -*-
+from PyInstaller.utils.hooks import collect_submodules
 from PyInstaller.utils.hooks import collect_all
 
 datas = [('static', 'static')]
-binaries = []
+binaries = [('E:\\src\\Avalon-Atlas\\.venv\\Lib\\site-packages\\PySide6\\plugins/*', 'PySide6/plugins')]
 hiddenimports = []
+hiddenimports += collect_submodules('PySide6.QtGui')
+hiddenimports += collect_submodules('PySide6.QtCore')
+tmp_ret = collect_all('PySide6')
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 tmp_ret = collect_all('rapidocr_onnxruntime')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
