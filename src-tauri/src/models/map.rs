@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MapRecord {
     pub name: String,
-    #[serde(skip, default)]
+    #[serde(default)]
     pub slug: String,
     pub tier: String,
     #[serde(rename = "type")]

@@ -1,21 +1,29 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import type { SearchResult } from "../lib/types";
+  import { createEventDispatcher } from "svelte";
+  import MapListItem from "./MapListItem.svelte";
 
-  let query = $state("");
-  let results = $state<SearchResult[]>([]);
-  let loading = $state(false);
+  const dispatch = createEventDispatcher();
 
-  // Debounce helper would be good here, but keeping it simple for now
+  let query = "";
+  let loading = false;
+  let results: SearchResult[] = [];
+  let showDropdown = false;
+  let searchContainer: HTMLDivElement;
+
   async function handleInput() {
-    if (query.length < 2) {
+    if (query.trim().length < 1) {
       results = [];
+      showDropdown = false;
       return;
     }
 
     loading = true;
+    showDropdown = true;
     try {
-      results = await invoke("search_maps", { query, maxResults: 20 });
+      const res = await invoke("search_maps", { query, maxResults: 10 }) as SearchResult[];
+      results = res;
     } catch (e) {
       console.error("Search failed:", e);
     } finally {
@@ -23,15 +31,23 @@
     }
   }
 
-  async function handleCapture() {
+  export async function handleCapture() {
     loading = true;
     query = "正在识别...";
+    showDropdown = false;
     try {
-      results = await invoke("capture_and_search");
-      if (results.length > 0) {
-        query = results[0].record.name; // Use first match name as query
+      const res = await invoke("capture_and_search") as SearchResult[];
+      if (res.length > 0) {
+        // For OCR, maybe we just pick the first one or show results?
+        // User said: "hit content similar to search result dropdown click" 
+        // But for OCR, usually we want immediate action or clarification.
+        // Let's verify with dropdown.
+        query = res[0].record.name; 
+        results = res;
+        showDropdown = true;
       } else {
         query = "无匹配结果";
+        results = [];
       }
     } catch (e) {
       console.error("OCR failed:", e);
@@ -40,110 +56,114 @@
       loading = false;
     }
   }
+  
+  function selectItem(item: SearchResult) {
+      dispatch('select', item);
+      showDropdown = false;
+      query = ""; // Clear after select? Or keep? User didn't specify. Clearing is standard for "Add to list".
+      results = [];
+  }
+
+  // Close dropdown when clicking outside
+  function handleWindowClick(event: MouseEvent) {
+    if (searchContainer && !searchContainer.contains(event.target as Node)) {
+      showDropdown = false;
+    }
+  }
 </script>
 
-<div class="search-container">
-  <input
-    type="text"
-    placeholder="在此输入地图名称..."
-    bind:value={query}
-    oninput={handleInput}
-    class="search-input"
-  />
-  
-  <button class="capture-btn" onclick={handleCapture} disabled={loading} title="截图识别">
-    📷
-  </button>
+<svelte:window on:click={handleWindowClick} />
 
-  {#if loading}
-    <div class="loading">搜索中...</div>
-  {/if}
-
-  {#if results.length > 0}
-    <div class="results-list">
-      {#each results as item}
-        <div class="result-item">
-          <span class="tier">{item.record.tier}</span>
-          <span class="name">{item.record.name}</span>
-          <span class="type">{item.record.map_type}</span>
+<div class="search-bar" bind:this={searchContainer}>
+  <div class="input-wrapper">
+    <span class="search-icon">🔍</span>
+    <input
+      type="text"
+      placeholder="输入地图名称..."
+      bind:value={query}
+      on:input={handleInput}
+      on:focus={() => { if (results.length > 0) showDropdown = true; }}
+      class="search-input"
+    />
+    
+    <!-- Dropdown -->
+    {#if showDropdown && results.length > 0}
+        <div class="dropdown">
+            {#each results as result}
+                <!-- svelte-ignore a11y-click-events-have-key-events -->
+                <div class="dropdown-item" on:click={() => selectItem(result)}>
+                    <MapListItem {result} />
+                </div>
+            {/each}
         </div>
-      {/each}
-    </div>
-  {/if}
+    {/if}
+  </div>
 </div>
 
 <style>
-  .search-container {
+  .search-bar {
+    display: flex;
+    gap: 10px;
     width: 100%;
-    max-width: 600px;
-    margin: 0 auto;
+    align-items: center;
+    position: relative; 
+    z-index: 100; /* Ensure dropdown is on top */
+  }
+
+  .input-wrapper {
+    flex: 1;
     position: relative;
     display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
+    align-items: center;
+  }
+
+  .search-icon {
+    position: absolute;
+    left: 12px;
+    font-size: 1.2rem;
+    pointer-events: none;
+    z-index: 1;
+    opacity: 0.5; /* more subtle */
   }
 
   .search-input {
-    flex: 1;
-    padding: 12px;
-    font-size: 1.2rem;
-    border-radius: 8px;
-    border: 1px solid #444;
-    background: #333;
-    color: white;
-  }
-
-  .capture-btn {
-    padding: 0 20px;
-    font-size: 1.5rem;
-    background: #4ecdc4;
-    border: none;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: background 0.2s;
-  }
-
-  .capture-btn:hover:not(:disabled) {
-    background: #45b7af;
-  }
-
-  .capture-btn:disabled {
-    opacity: 0.5;
-    cursor: wait;
-  }
-
-  .results-list {
     width: 100%;
-    margin-top: 1rem;
-    background: #2a2a2a;
-    border-radius: 8px;
-    overflow: hidden;
+    padding: 0 12px 0 42px;
+    height: 48px; 
+    font-size: 1.1rem;
+    border-radius: 6px;
+    border: none; /* Cleaner look */
+    background: rgba(255, 255, 255, 0.05); /* Very subtle bg */
+    color: var(--text-primary);
+    transition: all 0.2s;
   }
 
-  .result-item {
-    display: flex;
-    align-items: center;
-    padding: 10px;
-    border-bottom: 1px solid #333;
-    gap: 10px;
+  .search-input:focus {
+    outline: none;
+    background: rgba(255, 255, 255, 0.1);
+    box-shadow: 0 0 0 1px var(--accent);
   }
 
-  .result-item:hover {
-    background: #3a3a3a;
+  .dropdown {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      width: 100%;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 0 0 6px 6px;
+      margin-top: 4px;
+      max-height: 400px;
+      overflow-y: auto;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
   }
-
-  .tier {
-    font-weight: bold;
-    color: #ffd700;
-    width: 30px;
+  
+  .dropdown-item {
+      padding: 0;
+      cursor: pointer;
   }
-
-  .name {
-    flex: 1;
-  }
-
-  .type {
-    font-size: 0.8rem;
-    color: #888;
+  
+  .dropdown-item:hover {
+      background-color: var(--bg-tertiary);
   }
 </style>

@@ -12,8 +12,9 @@
         "windows": [
             {
                 "title": "Avalon Atlas",
-                "width": 800,
-                "height": 600
+                "width": 390,
+                "height": 840,
+                "resizable": true
             }
         ],
         "security": {

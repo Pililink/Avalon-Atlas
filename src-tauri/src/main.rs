@@ -58,7 +58,7 @@ fn main() {
             
             // Compute slug for each record
             for record in &mut records {
-                record.slug = record.name.trim().to_lowercase();
+                record.slug = record.name.trim().to_lowercase().replace(" ", "-");
             }
             
             let engine = Arc::new(SearchEngine::new(records));
