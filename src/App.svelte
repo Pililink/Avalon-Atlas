@@ -2,11 +2,15 @@
   import SearchBox from "./components/SearchBox.svelte";
   import MapListItem from "./components/MapListItem.svelte";
   import type { SearchResult } from "./lib/types";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
 
   let selectedMaps: SearchResult[] = [];
   let hoveredMap: string | null = null;
   let mouseX = 0;
   let mouseY = 0;
+  let alwaysOnTop = false;
+
+  const appWindow = getCurrentWindow();
 
   function handleSelect(event: CustomEvent<SearchResult>) {
     // Add to list if not already present (by ID)
@@ -41,6 +45,11 @@
           searchBox.handleCapture();
       }
   }
+  
+  async function toggleAlwaysOnTop() {
+      alwaysOnTop = !alwaysOnTop;
+      await appWindow.setAlwaysOnTop(alwaysOnTop);
+  }
 </script>
 
 <svelte:window on:mousemove={handleMouseMove} on:contextmenu|preventDefault={() => {}} on:keydown={handleKeydown}/>
@@ -49,6 +58,9 @@
   <header>
     <div class="search-area">
       <SearchBox bind:this={searchBox} on:select={handleSelect} />
+      <button class="pin-btn" on:click={toggleAlwaysOnTop} class:active={alwaysOnTop} title="窗口置顶">
+        📌
+      </button>
     </div>
   </header>
 
@@ -122,6 +134,38 @@
     padding: 16px;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
     z-index: 50;
+  }
+  
+  .search-area {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  
+  .pin-btn {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 1.2rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    flex-shrink: 0;
+  }
+  
+  .pin-btn:hover {
+    background: var(--bg-elevated);
+    border-color: var(--text-tertiary);
+  }
+  
+  .pin-btn.active {
+    background: var(--accent-muted);
+    border-color: var(--accent);
+    transform: rotate(45deg);
   }
 
   .content-area {
