@@ -15,10 +15,27 @@
 
     loading = true;
     try {
-      // Assuming command is exposed as 'search_maps'
       results = await invoke("search_maps", { query, maxResults: 20 });
     } catch (e) {
       console.error("Search failed:", e);
+    } finally {
+      loading = false;
+    }
+  }
+
+  async function handleCapture() {
+    loading = true;
+    query = "正在识别...";
+    try {
+      results = await invoke("capture_and_search");
+      if (results.length > 0) {
+        query = results[0].record.name; // Use first match name as query
+      } else {
+        query = "无匹配结果";
+      }
+    } catch (e) {
+      console.error("OCR failed:", e);
+      query = `识别失败: ${e}`;
     } finally {
       loading = false;
     }
@@ -33,6 +50,10 @@
     oninput={handleInput}
     class="search-input"
   />
+  
+  <button class="capture-btn" onclick={handleCapture} disabled={loading} title="截图识别">
+    📷
+  </button>
 
   {#if loading}
     <div class="loading">搜索中...</div>
@@ -56,10 +77,14 @@
     width: 100%;
     max-width: 600px;
     margin: 0 auto;
+    position: relative;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
   }
 
   .search-input {
-    width: 100%;
+    flex: 1;
     padding: 12px;
     font-size: 1.2rem;
     border-radius: 8px;
@@ -68,7 +93,27 @@
     color: white;
   }
 
+  .capture-btn {
+    padding: 0 20px;
+    font-size: 1.5rem;
+    background: #4ecdc4;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+
+  .capture-btn:hover:not(:disabled) {
+    background: #45b7af;
+  }
+
+  .capture-btn:disabled {
+    opacity: 0.5;
+    cursor: wait;
+  }
+
   .results-list {
+    width: 100%;
     margin-top: 1rem;
     background: #2a2a2a;
     border-radius: 8px;
