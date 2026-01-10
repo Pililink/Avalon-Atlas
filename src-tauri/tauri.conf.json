@@ -1,0 +1,35 @@
+{
+    "build": {
+        "beforeDevCommand": "npm run dev",
+        "beforeBuildCommand": "npm run build",
+        "devUrl": "http://localhost:1420",
+        "frontendDist": "../dist"
+    },
+    "package": {
+        "productName": "avalon-atlas",
+        "version": "2.0.0"
+    },
+    "app": {
+        "windows": [
+            {
+                "title": "Avalon Atlas",
+                "width": 800,
+                "height": 600
+            }
+        ],
+        "security": {
+            "csp": "default-src 'self'; img-src 'self' asset: https://asset.localhost"
+        }
+    },
+    "bundle": {
+        "active": true,
+        "targets": "all",
+        "identifier": "com.avalon-atlas.app",
+        "icon": [
+            "icons/32x32.png",
+            "icons/128x128.png",
+            "icons/icon.ico",
+            "icons/icon.icns"
+        ]
+    }
+}

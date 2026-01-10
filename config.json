@@ -1,0 +1,16 @@
+{
+  "maps_data_path": "E:\\src\\Avalon-Atlas\\static\\data\\maps.json",
+  "static_root": "E:\\src\\Avalon-Atlas\\static",
+  "ocr_backend": "rapidocr",
+  "ocr_region": {
+    "width": 600,
+    "height": 80,
+    "vertical_offset": 0
+  },
+  "ocr_debug": true,
+  "debug_dir": "E:\\src\\Avalon-Atlas\\debug",
+  "hotkey": "ctrl+shift+q",
+  "chat_hotkey": "ctrl+shift+w",
+  "debounce_ms": 200,
+  "always_on_top": false
+}

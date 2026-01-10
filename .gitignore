@@ -1,38 +1,20 @@
-# Python-generated files
-__pycache__/
-*.py[oc]
-build/
-dist/
-wheels/
-*.egg-info
-.cursorrules
-.cursorignore
-config/*
-logs/
-cache/
-temp/
-test*.py
-# Virtual environments
-.venv
-models/*
-test*.txt
-.idea/
-.claude
-.env
-*.wav
-!test/*
-.ruff_cache/
-.pytest_cache/
-.claude/
-.cursor/
-.vscode/
-hooks
-debug
-config.json
-uv.lock
+# Rust / Tauri
+/target
+/src-tauri/target
+/src-tauri/gen/schemas
+/src-tauri/Cargo.lock
 
-# 发布相关临时文件
-release_notes.md
-*.spec.bak
-*.manifest
-*.res
+# Node / Frontend
+node_modules
+dist
+.env
+.DS_Store
+
+# IDE
+.idea
+.vscode
+*.swp
+*.iml
+
+# OS
+Thumbs.db
