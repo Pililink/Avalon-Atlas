@@ -1,13 +1,12 @@
 {
+    "productName": "avalon-atlas",
+    "version": "2.0.0",
+    "identifier": "com.avalon-atlas.app",
     "build": {
         "beforeDevCommand": "npm run dev",
         "beforeBuildCommand": "npm run build",
         "devUrl": "http://localhost:1420",
         "frontendDist": "../dist"
-    },
-    "package": {
-        "productName": "avalon-atlas",
-        "version": "2.0.0"
     },
     "app": {
         "windows": [
@@ -24,7 +23,6 @@
     "bundle": {
         "active": true,
         "targets": "all",
-        "identifier": "com.avalon-atlas.app",
         "icon": [
             "icons/32x32.png",
             "icons/128x128.png",
