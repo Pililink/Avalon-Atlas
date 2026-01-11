@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-1.0.4-blue.svg)
+![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows-lightgrey.svg)
 
@@ -47,12 +47,13 @@ Avalon Atlas 是一款专为阿瓦隆在线（Albion Online）玩家设计的桌
 - **等级标注**：T4/T6/T8 等级清晰标识
 
 ### 🎨 用户界面
-- **现代化设计**：基于 PySide6 (Qt6) 构建
+- **现代化设计**：基于 Tauri + Svelte 5 构建
+- **跨平台原生性能**：使用 Rust 后端，提供接近原生应用的性能
 - **窗口图标**：任务栏和标题栏显示应用图标
 - **窗口置顶**：一键置顶功能，方便游戏内查看
 - **响应式布局**：自适应窗口大小
 - **深色主题**：护眼舒适的配色方案
-- **内联消息**：状态消息显示在按钮区域，节省垂直空间
+- **轻量高效**：启动快速，内存占用低
 
 ### 🔄 自动更新
 - **版本检查**：启动时自动检查 GitHub Releases 新版本
@@ -79,9 +80,9 @@ Avalon Atlas 是一款专为阿瓦隆在线（Albion Online）玩家设计的桌
 #### 方式一：下载发行版（推荐）
 
 1. 前往 [Releases](https://github.com/Pililink/Avalon-Atlas/releases) 页面
-2. 下载最新版本的 `AvalonAtlas-v1.0.4-portable.zip`
-3. 解压到任意目录（建议路径不含中文）
-4. 双击 `AvalonAtlas.exe` 启动
+2. 下载最新版本的 `AvalonAtlas-v2.0.0-setup.exe` 或便携版
+3. 运行安装程序或解压到任意目录
+4. 启动应用程序
 
 #### 方式二：从源码构建
 
@@ -90,19 +91,21 @@ Avalon Atlas 是一款专为阿瓦隆在线（Albion Online）玩家设计的桌
 git clone https://github.com/Pililink/Avalon-Atlas.git
 cd Avalon-Atlas
 
-# 安装 uv（推荐）或使用 pip
-# 使用 uv (推荐)
-uv sync
-uv run python main.py
+# 安装前端依赖
+npm install
 
-# 或使用 pip
-pip install -r requirements.txt
-python main.py
+# 运行开发模式
+npm run tauri dev
 
 # 构建可执行文件
-uv run python build.py  # 或 python build.py
-# 输出在 dist/AvalonAtlas/ 目录
+npm run tauri build
+# 输出在 src-tauri/target/release/bundle/ 目录
 ```
+
+**系统要求**:
+- Node.js 18+ 和 npm
+- Rust 1.70+（用于 Tauri）
+- Windows SDK（Windows 平台）
 
 ### 首次运行
 
@@ -194,8 +197,8 @@ uv run python build.py  # 或 python build.py
 
 ```json
 {
-  "maps_data_path": "static/data/maps.json",  // 地图数据文件路径
-  "static_root": "static",                     // 静态资源目录
+  "maps_data_path": "public/data/maps.json",  // 地图数据文件路径
+  "static_root": "public",                     // 静态资源目录
   "hotkey": "ctrl+shift+q",                    // 鼠标 OCR 热键
   "chat_hotkey": "ctrl+shift+w",               // 聊天框 OCR 热键
   "debounce_ms": 200,                          // 搜索防抖延迟(毫秒)
@@ -251,21 +254,30 @@ uv run python build.py  # 或 python build.py
 ## 🗂️ 项目结构
 
 ```
-AvalonAtlas/
-├── AvalonAtlas.exe           # 主程序
-├── config.json               # 配置文件（自动生成）
-├── static/                   # 静态资源目录
+Avalon-Atlas/
+├── src/                      # Svelte 前端代码
+│   ├── App.svelte            # 主应用组件
+│   ├── app.css               # 全局样式
+│   └── ...                   # 其他组件和工具
+├── src-tauri/                # Rust 后端代码
+│   ├── src/
+│   │   ├── main.rs           # Tauri 主入口
+│   │   ├── services/         # 后端服务（OCR、热键等）
+│   │   └── ...
+│   ├── Cargo.toml            # Rust 依赖配置
+│   └── tauri.conf.json       # Tauri 配置文件
+├── public/                   # 静态资源
 │   ├── data/
 │   │   └── maps.json         # 地图数据（400+ 张地图）
-│   ├── maps/                 # 地图预览图（.png/.webp）
-│   └── assets/               # UI 图标资源
-├── _internal/                # 运行时依赖（PyInstaller 打包）
-└── debug/                    # OCR 调试截图（可选）
+│   └── maps/                 # 地图预览图（.png/.webp）
+├── package.json              # Node.js 依赖
+├── vite.config.ts            # Vite 构建配置
+└── config.json               # 用户配置文件（运行时生成）
 ```
 
 ### 数据文件说明
 
-#### `static/data/maps.json`
+#### `public/data/maps.json`
 包含所有地图的详细信息：
 - 名称、等级 (T4/T6/T8)
 - 地图类型（王城/黑区/深层等 12 种）
@@ -274,7 +286,7 @@ AvalonAtlas/
 - 资源分布（石/木/矿/棉/皮）
 - 传送门数量
 
-#### `static/maps/`
+#### `public/maps/`
 地图预览图，命名格式：`地图名.png` 或 `地图名.webp`
 - 示例：`casos-aiagsum.png`
 - 支持 WebP 格式（体积更小）
@@ -329,7 +341,7 @@ AvalonAtlas/
 **解决**：
 1. 检查输入长度（最少 2 个字符）
 2. 尝试输入更多字符或部分拼写
-3. 确认 `static/data/maps.json` 存在且未损坏
+3. 确认 `public/data/maps.json` 存在且未损坏
 4. 查看日志是否有数据加载错误
 
 ### 配置文件丢失
@@ -350,12 +362,21 @@ AvalonAtlas/
 
 ### 技术栈
 
-- **GUI**: PySide6 (Qt 6.7+)
-- **OCR**: RapidOCR / Tesseract
-- **数据验证**: Pydantic
-- **打包**: PyInstaller
-- **热键**: keyboard / pynput
-- **截图**: mss
+**前端**:
+- **框架**: Svelte 5 - 轻量级响应式前端框架
+- **构建工具**: Vite - 快速的前端构建工具
+- **TypeScript**: 类型安全支持
+
+**后端**:
+- **运行时**: Tauri 2.0 - 使用 Rust 构建的轻量级跨平台应用框架
+- **语言**: Rust - 高性能、内存安全的系统编程语言
+- **OCR**: 基于 Rust 的 OCR 引擎
+- **热键**: global-hotkey - 全局热键管理
+- **截图**: screenshots - 跨平台截图库
+
+**依赖管理**:
+- **前端**: npm / Node.js
+- **后端**: Cargo / Rust
 
 ---
 
@@ -366,11 +387,12 @@ AvalonAtlas/
 ### 第三方依赖
 
 本项目使用以下开源库：
-- **PySide6**: LGPL-3.0
-- **RapidOCR**: Apache-2.0
-- **PyInstaller**: GPL-2.0
+- **Tauri**: MIT/Apache-2.0
+- **Svelte**: MIT
+- **Vite**: MIT
+- **Rust Crates**: 详见 `src-tauri/Cargo.toml`
 
-完整依赖列表见 `pyproject.toml`。
+完整依赖列表见 `package.json` 和 `src-tauri/Cargo.toml`。
 
 ### 数据来源
 

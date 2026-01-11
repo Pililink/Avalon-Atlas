@@ -3,6 +3,9 @@
   import MapListItem from "./components/MapListItem.svelte";
   import type { SearchResult } from "./lib/types";
   import { getCurrentWindow } from "@tauri-apps/api/window";
+  import { listen } from "@tauri-apps/api/event";
+  import { invoke } from "@tauri-apps/api/core";
+  import { onMount, onDestroy } from "svelte";
 
   let selectedMaps: SearchResult[] = [];
   let hoveredMap: string | null = null;
@@ -11,6 +14,7 @@
   let alwaysOnTop = false;
 
   const appWindow = getCurrentWindow();
+  let unlistenMouseOcr: (() => void) | null = null;
 
   function handleSelect(event: CustomEvent<SearchResult>) {
     // Add to list if not already present (by ID)
@@ -50,6 +54,41 @@
       alwaysOnTop = !alwaysOnTop;
       await appWindow.setAlwaysOnTop(alwaysOnTop);
   }
+
+  // Hotkey OCR handler - Ctrl+Shift+Q
+  async function handleMouseOcr() {
+    try {
+      console.log('Mouse OCR triggered at:', mouseX, mouseY);
+      // Python version: mouse at bottom center of region
+      // Region: width x height, mouse at (x, y - height)
+      const results = await invoke<SearchResult[]>('capture_mouse_ocr', {
+        x: mouseX,
+        y: mouseY,
+        width: 300,
+        height: 80
+      });
+      
+      // Add results to selected maps
+      for (const result of results) {
+        if (!selectedMaps.some(m => m.record.name === result.record.name && m.record.tier === result.record.tier)) {
+          selectedMaps = [...selectedMaps, result];
+        }
+      }
+    } catch (error) {
+      console.error('Mouse OCR failed:', error);
+    }
+  }
+
+  onMount(async () => {
+    // Listen for hotkey event from backend
+    unlistenMouseOcr = await listen('hotkey-mouse-ocr', () => {
+      handleMouseOcr();
+    });
+  });
+
+  onDestroy(() => {
+    if (unlistenMouseOcr) unlistenMouseOcr();
+  });
 </script>
 
 <svelte:window on:mousemove={handleMouseMove} on:contextmenu|preventDefault={() => {}} on:keydown={handleKeydown}/>
