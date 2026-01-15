@@ -49,7 +49,6 @@ pub fn subsequence_match(query: &str, candidate: &str) -> Option<MatchDetail> {
     let mut backtrack = vec![vec![-1i32; n]; m];
 
     // Initialize first row
-    let max_col_score = f64::NEG_INFINITY;
     for j in 0..n {
         if chars_match(query_chars[0], target_chars[j]) {
             dp[0][j] = score_position(&original_chars, j, None);

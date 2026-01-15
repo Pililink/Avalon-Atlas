@@ -1,20 +1,80 @@
 <script lang="ts">
   import SearchBox from "./components/SearchBox.svelte";
   import MapListItem from "./components/MapListItem.svelte";
+  import Settings from "./components/Settings.svelte";
   import type { SearchResult } from "./lib/types";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { listen } from "@tauri-apps/api/event";
   import { invoke } from "@tauri-apps/api/core";
   import { onMount, onDestroy } from "svelte";
 
+  interface BackendConfig {
+    mouse_hotkey: string;
+    chat_hotkey: string;
+    ocr_debug: boolean;
+    ocr_region: {
+      width: number;
+      height: number;
+      vertical_offset: number;
+    };
+    always_on_top: boolean;
+    debounce_ms: number;
+  }
+
+  // Region selection event payload from overlay window
+  interface RegionSelectedPayload {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }
+
   let selectedMaps: SearchResult[] = [];
   let hoveredMap: string | null = null;
   let mouseX = 0;
   let mouseY = 0;
   let alwaysOnTop = false;
+  let showSettings = false;
+
+  // Config state (frontend format)
+  let config = {
+    mouseHotkey: "ctrl+shift+q",
+    regionHotkey: "ctrl+shift+w",
+    ocrDebug: true,
+    ocrRegion: {
+      width: 600,
+      height: 80,
+      verticalOffset: 0
+    }
+  };
 
   const appWindow = getCurrentWindow();
   let unlistenMouseOcr: (() => void) | null = null;
+  let unlistenRegionSelected: (() => void) | null = null;
+
+  // Load config from backend on mount
+  async function loadConfig() {
+    try {
+      const backendConfig = await invoke<BackendConfig>('get_config');
+      config = {
+        mouseHotkey: backendConfig.mouse_hotkey,
+        regionHotkey: backendConfig.chat_hotkey,  // Renamed: region select OCR
+        ocrDebug: backendConfig.ocr_debug,
+        ocrRegion: {
+          width: backendConfig.ocr_region.width,
+          height: backendConfig.ocr_region.height,
+          verticalOffset: backendConfig.ocr_region.vertical_offset
+        }
+      };
+      alwaysOnTop = backendConfig.always_on_top;
+      if (alwaysOnTop) {
+        await appWindow.setAlwaysOnTop(true);
+      }
+      console.log('Loaded config:', config);
+    } catch (error) {
+      console.error('Failed to load config:', error);
+    }
+  }
 
   function handleSelect(event: CustomEvent<SearchResult>) {
     // Add to list if not already present (by ID)
@@ -56,16 +116,16 @@
   }
 
   // Hotkey OCR handler - Ctrl+Shift+Q
+  // Uses parameters from config (same as Python version)
   async function handleMouseOcr() {
     try {
       console.log('Mouse OCR triggered at:', mouseX, mouseY);
       // Python version: mouse at bottom center of region
-      // Region: width x height, mouse at (x, y - height)
       const results = await invoke<SearchResult[]>('capture_mouse_ocr', {
         x: mouseX,
         y: mouseY,
-        width: 300,
-        height: 80
+        width: config.ocrRegion.width,
+        height: config.ocrRegion.height
       });
       
       // Add results to selected maps
@@ -80,15 +140,81 @@
   }
 
   onMount(async () => {
-    // Listen for hotkey event from backend
+    // Load config from backend
+    await loadConfig();
+    
+    // Listen for mouse OCR hotkey from backend
     unlistenMouseOcr = await listen('hotkey-mouse-ocr', () => {
       handleMouseOcr();
+    });
+    
+    // Listen for region selection from overlay window
+    unlistenRegionSelected = await listen<RegionSelectedPayload>('region-selected', async (event) => {
+      console.log('Region selected from overlay:', event.payload);
+      await handleRegionOcr(event.payload);
     });
   });
 
   onDestroy(() => {
     if (unlistenMouseOcr) unlistenMouseOcr();
+    if (unlistenRegionSelected) unlistenRegionSelected();
   });
+
+  function openSettings() {
+    showSettings = true;
+  }
+
+  // Handle region OCR - called when overlay window sends region-selected event
+  async function handleRegionOcr(region: RegionSelectedPayload) {
+    const { x, y, width, height } = region;
+    console.log('Performing OCR on region:', x, y, width, height);
+    
+    try {
+      const results = await invoke<SearchResult[]>('capture_region_ocr', {
+        x, y, width, height
+      });
+      
+      // Add results to selected maps
+      for (const result of results) {
+        if (!selectedMaps.some(m => m.record.name === result.record.name && m.record.tier === result.record.tier)) {
+          selectedMaps = [...selectedMaps, result];
+        }
+      }
+    } catch (error) {
+      console.error('Region OCR failed:', error);
+    }
+  }
+
+  // Legacy handler for in-window region selector (no longer used)
+  async function handleRegionComplete(event: CustomEvent<{ x: number; y: number; width: number; height: number }>) {
+    await handleRegionOcr(event.detail);
+  }
+
+  async function handleSettingsSave(event: CustomEvent) {
+    const newConfig = event.detail;
+    config = newConfig;
+    
+    // Save to backend
+    try {
+      await invoke('save_config', {
+        newConfig: {
+          mouse_hotkey: newConfig.mouseHotkey,
+          chat_hotkey: newConfig.regionHotkey,  // Backend uses chat_hotkey field
+          ocr_debug: newConfig.ocrDebug,
+          ocr_region: {
+            width: newConfig.ocrRegion.width,
+            height: newConfig.ocrRegion.height,
+            vertical_offset: newConfig.ocrRegion.verticalOffset
+          },
+          always_on_top: alwaysOnTop,
+          debounce_ms: 200
+        }
+      });
+      console.log('Settings saved:', config);
+    } catch (error) {
+      console.error('Failed to save config:', error);
+    }
+  }
 </script>
 
 <svelte:window on:mousemove={handleMouseMove} on:contextmenu|preventDefault={() => {}} on:keydown={handleKeydown}/>
@@ -97,7 +223,10 @@
   <header>
     <div class="search-area">
       <SearchBox bind:this={searchBox} on:select={handleSelect} />
-      <button class="pin-btn" on:click={toggleAlwaysOnTop} class:active={alwaysOnTop} title="窗口置顶">
+      <button class="icon-btn" on:click={openSettings} title="设置">
+        ⚙️
+      </button>
+      <button class="icon-btn" on:click={toggleAlwaysOnTop} class:active={alwaysOnTop} title="窗口置顶">
         📌
       </button>
     </div>
@@ -113,6 +242,7 @@
         {#each selectedMaps as result, i}
           <!-- Wrap explicitly to capture hover events here for the preview -->
           <!-- svelte-ignore a11y-click-events-have-key-events -->
+          <!-- svelte-ignore a11y-no-static-element-interactions -->
           <div 
             class="list-item-wrapper"
             on:mouseenter={(e) => handleMouseEnter(e, result.record)}
@@ -129,18 +259,22 @@
   <footer>
     <div class="footer-content">
       <div class="hotkey-section">
-        <h3>⌨️ 热键设置</h3>
+        <h3>⌨️ 热键</h3>
         <div class="hotkey-row">
-           <label>搜索/OCR:</label>
-           <div class="key-bind">F4</div>
+           <span class="hotkey-label">鼠标 OCR:</span>
+           <div class="key-bind">{config.mouseHotkey}</div>
+        </div>
+        <div class="hotkey-row">
+           <span class="hotkey-label">框选 OCR:</span>
+           <div class="key-bind">{config.regionHotkey}</div>
         </div>
       </div>
       
       <div class="help-section">
          <h3>❓ 使用说明</h3>
-         <p>1. 在上方通过搜索或截图添加地图</p>
-         <p>2. 鼠标悬停列表查看地图预览</p>
-         <p>3. 点击列表项移除</p>
+         <p>1. 搜索或热键 OCR 添加地图</p>
+         <p>2. 鼠标悬停查看地图预览</p>
+         <p>3. 点击 × 移除地图</p>
       </div>
     </div>
   </footer>
@@ -158,6 +292,14 @@
         />
     </div>
   {/if}
+  
+  <!-- Settings Dialog -->
+  <Settings 
+    bind:show={showSettings} 
+    {config} 
+    on:close={() => showSettings = false}
+    on:save={handleSettingsSave}
+  />
 </main>
 
 <style>
@@ -181,7 +323,7 @@
     align-items: center;
   }
   
-  .pin-btn {
+  .icon-btn {
     width: 40px;
     height: 40px;
     display: flex;
@@ -196,14 +338,17 @@
     flex-shrink: 0;
   }
   
-  .pin-btn:hover {
+  .icon-btn:hover {
     background: var(--bg-elevated);
     border-color: var(--text-tertiary);
   }
   
-  .pin-btn.active {
+  .icon-btn.active {
     background: var(--accent-muted);
     border-color: var(--accent);
+  }
+  
+  .icon-btn.active[title="窗口置顶"] {
     transform: rotate(45deg);
   }
 

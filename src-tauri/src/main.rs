@@ -7,10 +7,12 @@ mod services;
 mod utils;
 
 use std::fs;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use tauri::Manager;
 use crate::services::search_engine::SearchEngine;
 use crate::models::map::MapRecord;
+use crate::models::config::AppConfig;
+use crate::commands::config::ConfigState;
 
 use crate::services::ocr_service::OcrService;
 use crate::services::hotkey_service::HotkeyService;
@@ -22,7 +24,17 @@ fn main() {
             let cwd = std::env::current_dir().unwrap_or_default();
             println!("Current working directory: {:?}", cwd);
 
-            // try multiple paths
+            // Load config
+            let config_path = cwd.join("config.json");
+            let config = AppConfig::load(&config_path);
+            println!("Loaded config: {:?}", config);
+            
+            let config_state = Arc::new(ConfigState {
+                config: RwLock::new(config),
+                config_path,
+            });
+
+            // try multiple paths for maps.json
             let possible_paths = vec![
                 // Production resource
                 app.path().resolve("static/data/maps.json", tauri::path::BaseDirectory::Resource).ok(),
@@ -65,7 +77,7 @@ fn main() {
             
             let app_handle = app.handle().clone();
             
-            let mut service = OcrService::new(engine.clone());
+            let service = OcrService::new(engine.clone());
             service.set_app_handle(app_handle.clone());
             
             let ocr_service = Arc::new(service);
@@ -76,6 +88,7 @@ fn main() {
             
             app.manage(engine);
             app.manage(ocr_service);
+            app.manage(config_state);
             
             Ok(())
         })
@@ -86,6 +99,8 @@ fn main() {
             commands::ocr::capture_and_search,
             commands::hotkey_ocr::capture_mouse_ocr,
             commands::hotkey_ocr::capture_region_ocr,
+            commands::config::get_config,
+            commands::config::save_config,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

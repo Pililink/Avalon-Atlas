@@ -1,10 +1,12 @@
 <script lang="ts">
-  import type { SearchResult } from "../lib/types";
+  import type { SearchResult, MapRecord } from "../lib/types";
 
   export let result: SearchResult;
   export let selected: boolean = false;
 
-  const resourceTypes = [
+  type ResourceKey = keyof MapRecord['resources'];
+  
+  const resourceTypes: { key: ResourceKey; icon: string; label: string }[] = [
     { key: 'wood', icon: '/static/assets/wood.webp', label: '木材' },
     { key: 'rock', icon: '/static/assets/rock.webp', label: '石材' },
     { key: 'ore', icon: '/static/assets/ore.webp', label: '矿石' },
@@ -63,7 +65,7 @@
     <div class="title-row">
        <span class="tier-badge" style="background: {getTierColor(result.record.tier)};">{result.record.tier}</span>
        <span class="map-name">{@html getHighlightedName(result.record.name, result.positions)}</span>
-       <span class="map-type">{getTypeName(result.record.type)}</span>
+       <span class="map-type">{getTypeName(result.record.map_type)}</span>
        {#if result.record.brecilien > 0}
           <span class="brec-icon" title="Brecilien Access">🍄</span>
        {/if}

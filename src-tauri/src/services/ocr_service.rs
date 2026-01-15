@@ -5,10 +5,96 @@ use crate::services::search_engine::SearchEngine;
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager};
 use std::os::windows::process::CommandExt;
+use image::{DynamicImage, GrayImage, Luma};
 
 pub struct OcrService {
     search_engine: Arc<SearchEngine>,
     app_handle: Mutex<Option<AppHandle>>,
+}
+
+/// OCR character correction mapping (same as Python version)
+/// Maps commonly misrecognized characters to their correct equivalents
+fn apply_ocr_char_fixes(text: &str) -> String {
+    text.chars()
+        .map(|c| match c {
+            '0' => 'o',
+            '1' | '|' | '¡' => 'l',
+            '2' => 'z',
+            '3' => 'e',
+            '4' => 'a',
+            '5' => 's',
+            '6' | '8' => 'b',
+            '7' => 't',
+            '9' => 'g',
+            _ => c,
+        })
+        .collect()
+}
+
+/// Preprocess image to improve OCR accuracy (same as Python version)
+/// Steps: Convert to grayscale, enhance contrast, sharpen
+fn preprocess_image(img: DynamicImage) -> DynamicImage {
+    // 1. Convert to grayscale
+    let gray = img.to_luma8();
+    
+    // 2. Enhance contrast (simple linear stretch)
+    let contrast_enhanced = enhance_contrast(&gray, 2.0);
+    
+    // 3. Sharpen (using a simple unsharp mask approximation)
+    let sharpened = sharpen_image(&contrast_enhanced);
+    
+    DynamicImage::ImageLuma8(sharpened)
+}
+
+/// Enhance contrast by a factor
+fn enhance_contrast(img: &GrayImage, factor: f32) -> GrayImage {
+    let (width, height) = img.dimensions();
+    let mut result = GrayImage::new(width, height);
+    
+    for (x, y, pixel) in img.enumerate_pixels() {
+        let value = pixel[0] as f32;
+        // Center around 128, apply factor, then shift back
+        let new_value = ((value - 128.0) * factor + 128.0).clamp(0.0, 255.0) as u8;
+        result.put_pixel(x, y, Luma([new_value]));
+    }
+    
+    result
+}
+
+/// Simple sharpen filter using 3x3 kernel
+fn sharpen_image(img: &GrayImage) -> GrayImage {
+    let (width, height) = img.dimensions();
+    let mut result = GrayImage::new(width, height);
+    
+    // Sharpen kernel: center = 5, edges = -1
+    // [0, -1, 0]
+    // [-1, 5, -1]
+    // [0, -1, 0]
+    
+    for y in 1..height.saturating_sub(1) {
+        for x in 1..width.saturating_sub(1) {
+            let center = img.get_pixel(x, y)[0] as i32 * 5;
+            let top = img.get_pixel(x, y - 1)[0] as i32;
+            let bottom = img.get_pixel(x, y + 1)[0] as i32;
+            let left = img.get_pixel(x - 1, y)[0] as i32;
+            let right = img.get_pixel(x + 1, y)[0] as i32;
+            
+            let value = (center - top - bottom - left - right).clamp(0, 255) as u8;
+            result.put_pixel(x, y, Luma([value]));
+        }
+    }
+    
+    // Copy edges
+    for x in 0..width {
+        result.put_pixel(x, 0, *img.get_pixel(x, 0));
+        result.put_pixel(x, height - 1, *img.get_pixel(x, height - 1));
+    }
+    for y in 0..height {
+        result.put_pixel(0, y, *img.get_pixel(0, y));
+        result.put_pixel(width - 1, y, *img.get_pixel(width - 1, y));
+    }
+    
+    result
 }
 
 impl OcrService {
@@ -132,17 +218,25 @@ impl OcrService {
     }
 
     fn normalize_text(&self, text: &str) -> String {
-        text.lines()
+        let cleaned: String = text.lines()
             .map(|line| line.trim())
             .filter(|line| !line.is_empty())
             .collect::<Vec<&str>>()
             .join(" ")
             .chars()
             .filter(|c| c.is_alphanumeric() || c.is_whitespace() || *c == '-')
-            .collect()
+            .collect();
+        
+        // Apply OCR character fixes (0→o, 1→l, etc.)
+        apply_ocr_char_fixes(&cleaned.to_lowercase())
     }
 
-    /// Capture a region centered at mouse position
+    /// Capture a region with mouse at bottom center (consistent with Python version)
+    /// 
+    /// Python logic:
+    /// - left = mouse_x - width / 2
+    /// - top = mouse_y - height - vertical_offset
+    /// - Mouse is at the bottom center of the region
     pub fn capture_mouse_region(
         &self,
         mouse_x: i32,
@@ -150,9 +244,9 @@ impl OcrService {
         width: u32,
         height: u32,
     ) -> Result<Vec<SearchResult>, String> {
-        // Calculate region bounds
+        // Mouse at bottom center: region is above the mouse
         let x = mouse_x - (width as i32 / 2);
-        let y = mouse_y - (height as i32 / 2);
+        let y = mouse_y - height as i32;  // Region is ABOVE mouse position
         
         self.capture_custom_region(x, y, width, height)
     }
@@ -177,17 +271,24 @@ impl OcrService {
         // Ensure coordinates are within bounds
         let x = x.max(0) as u32;
         let y = y.max(0) as u32;
-        let width = width.min(full_image.width() - x);
-        let height = height.min(full_image.height() - y);
+        let width = width.min(full_image.width().saturating_sub(x));
+        let height = height.min(full_image.height().saturating_sub(y));
+        
+        if width == 0 || height == 0 {
+            return Err("Invalid capture region dimensions".to_string());
+        }
         
         // Crop the image
         let cropped = image::DynamicImage::ImageRgba8(full_image).crop_imm(x, y, width, height);
         
-        // Save to temp file
+        // Apply preprocessing (grayscale, contrast enhancement, sharpen)
+        let processed = preprocess_image(cropped);
+        
+        // Save processed image to temp file
         let mut temp_path = std::env::temp_dir();
         temp_path.push(format!("avalon_atlas_region_{}_{}.png", x, y));
         
-        cropped.save(&temp_path)
+        processed.save(&temp_path)
             .map_err(|e| format!("Failed to save region screenshot: {}", e))?;
         
         let temp_path_str = temp_path.to_str().ok_or("Invalid temp path")?;
