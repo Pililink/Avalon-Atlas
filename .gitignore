@@ -24,6 +24,7 @@ logs/
 backend/logs/
 
 # Local agent / migration scratch state
+.claude/
 .omc/
 **/.omc/
 backend/
