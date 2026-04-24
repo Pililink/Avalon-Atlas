@@ -1,202 +1,188 @@
 name: Release
 
-# 触发条件：推送以 'v' 开头的标签时（如 v1.0.0）
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version without the v prefix, for example 2.0.0"
+        required: true
+        type: string
 
-# 环境变量
+permissions:
+  contents: write
+
 env:
-  PYTHON_VERSION: '3.12'
+  NODE_VERSION: "24"
 
 jobs:
-  build-and-release:
-    name: 构建并发布 Windows 便携版
+  build-windows-portable:
+    name: Build Windows portable release
     runs-on: windows-latest
 
-    permissions:
-      contents: write  # 需要写权限来创建 Release
-
     steps:
-      # 1. 检出代码
-      - name: 📥 检出代码
+      - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # 获取完整历史，用于版本信息
 
-      # 2. 设置 Python 环境
-      - name: 🐍 设置 Python ${{ env.PYTHON_VERSION }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: 'pip'  # 缓存 pip 依赖
-
-      # 3. 安装依赖
-      - name: 📦 安装依赖
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt || pip install pydantic pyside6 rapidfuzz pillow pytesseract mss keyboard pynput numpy rapidocr-onnxruntime pyinstaller
-
-      # 4. 验证版本号一致性
-      - name: 🔍 验证版本号
+      - name: Resolve version
+        id: version
         shell: pwsh
         run: |
-          $tag = "${{ github.ref_name }}"
-          $version = $tag -replace '^v', ''
-
-          # 读取 atlas/version.py 中的版本号
-          $versionFile = Get-Content "atlas/version.py" -Raw
-          if ($versionFile -match '__version__\s*=\s*[''"]([^''"]+)[''"]') {
-            $codeVersion = $matches[1]
-            Write-Host "Git 标签版本: $version"
-            Write-Host "代码中版本: $codeVersion"
-
-            if ($version -ne $codeVersion) {
-              Write-Error "版本号不一致！请确保 git tag 与 atlas/version.py 中的版本号匹配。"
-              exit 1
-            }
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $version = "${{ inputs.version }}"
+            $tag = "v$version"
           } else {
-            Write-Error "无法从 atlas/version.py 读取版本号"
+            $tag = "${{ github.ref_name }}"
+            $version = $tag -replace '^v', ''
+          }
+
+          if ($version -notmatch '^\d+\.\d+\.\d+([-.][0-9A-Za-z.-]+)?$') {
+            Write-Error "Invalid release version: $version"
             exit 1
           }
 
-      # 5. 构建可执行文件
-      - name: 🔨 构建可执行文件
-        env:
-          PYTHONIOENCODING: utf-8
-          PYTHONUTF8: 1
-        run: |
-          # 设置控制台代码页为 UTF-8
-          chcp 65001
-          python build.py
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          Write-Host "Version: $version"
+          Write-Host "Tag: $tag"
 
-      # 6. 检查构建产物
-      - name: ✅ 验证构建产物
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Validate release version
         shell: pwsh
         run: |
-          $version = "${{ github.ref_name }}" -replace '^v', ''
-          $exePath = "dist/AvalonAtlas/AvalonAtlas.exe"
-          $zipPath = "dist/AvalonAtlas-v$version-portable.zip"
+          $version = "${{ steps.version.outputs.version }}"
+          $package = Get-Content package.json -Raw | ConvertFrom-Json
+          $tauri = Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
+          $cargo = Get-Content src-tauri/Cargo.toml -Raw
 
-          if (-not (Test-Path $exePath)) {
-            Write-Error "构建失败：未找到可执行文件"
+          if ($package.version -ne $version) {
+            Write-Error "package.json version $($package.version) does not match release version $version"
+            exit 1
+          }
+          if ($tauri.version -ne $version) {
+            Write-Error "tauri.conf.json version $($tauri.version) does not match release version $version"
+            exit 1
+          }
+          if ($cargo -notmatch '(?m)^version\s*=\s*"([^"]+)"') {
+            Write-Error "Could not read src-tauri/Cargo.toml version"
+            exit 1
+          }
+          if ($matches[1] -ne $version) {
+            Write-Error "Cargo.toml version $($matches[1]) does not match release version $version"
             exit 1
           }
 
-          # 显示文件信息
-          $exeSize = (Get-Item $exePath).Length / 1MB
-          Write-Host "✓ 可执行文件大小: $($exeSize.ToString('F2')) MB"
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            build/target
+          key: windows-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            windows-cargo-
 
-          if (Test-Path $zipPath) {
-            $zipSize = (Get-Item $zipPath).Length / 1MB
-            Write-Host "✓ 便携版压缩包: $($zipSize.ToString('F2')) MB"
-          } else {
-            Write-Error "未找到便携版压缩包: $zipPath"
-            exit 1
-          }
+      - name: Install dependencies
+        run: npm ci
 
-          # 列出必需文件（PyInstaller onedir 模式下文件在 _internal 目录）
-          Write-Host "`n必需文件检查:"
+      - name: Check frontend
+        run: npm run check
+
+      - name: Build portable package
+        shell: pwsh
+        run: |
+          powershell -ExecutionPolicy Bypass -File scripts/package-portable.ps1 -Version "${{ steps.version.outputs.version }}"
+
+      - name: Verify portable package
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $packageDir = "build/portable/avalon-atlas-v$version-portable"
+          $zipPath = "build/portable/avalon-atlas-v$version-portable.zip"
+
           $requiredPaths = @(
-            "dist/AvalonAtlas/_internal/static/data/maps.json",
-            "dist/AvalonAtlas/_internal/static/maps",
-            "dist/AvalonAtlas/_internal/static/assets"
+            "$packageDir/avalon-atlas.exe",
+            "$packageDir/config.json",
+            "$packageDir/static/data/maps.json",
+            "$packageDir/static/maps",
+            "$packageDir/static/assets",
+            "$packageDir/binaries/tesseract",
+            "$packageDir/binaries/tessdata/eng.traineddata",
+            "$packageDir/logs",
+            "$zipPath"
           )
 
           foreach ($path in $requiredPaths) {
-            if (Test-Path $path) {
-              Write-Host "  ✓ $path"
-            } else {
-              Write-Error "  ✗ 缺失: $path"
+            if (-not (Test-Path $path)) {
+              Write-Error "Missing release file: $path"
               exit 1
             }
           }
 
-      # 7. 准备发布说明
-      - name: 📝 生成发布说明
-        id: release_notes
-        shell: pwsh
-        run: |
-          $tag = "${{ github.ref_name }}"
-          $version = $tag -replace '^v', ''
-
-          # 从 CHANGELOG.md 提取当前版本的变更内容
-          $changelogPath = "CHANGELOG.md"
-          if (Test-Path $changelogPath) {
-            $content = Get-Content $changelogPath -Raw
-
-            # 提取当前版本部分（从 [version] 到下一个版本标题）
-            $pattern = "(?s)## \[$version.*?\](.*?)(?=## \[|$)"
-            if ($content -match $pattern) {
-              $notes = $matches[1].Trim()
-            } else {
-              $notes = "请查看 [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) 了解详细变更。"
-            }
-          } else {
-            $notes = "Avalon Atlas $tag 发布版本"
+          $mapCount = (Get-ChildItem "$packageDir/static/maps" -Filter *.webp).Count
+          if ($mapCount -lt 400) {
+            Write-Error "Expected at least 400 map webp files, found $mapCount"
+            exit 1
           }
 
-          # 添加下载说明
-          $fullNotes = @"
-          $notes
+          $zipSizeMb = [math]::Round((Get-Item $zipPath).Length / 1MB, 2)
+          Write-Host "Portable directory: $packageDir"
+          Write-Host "Portable zip: $zipPath ($zipSizeMb MB)"
+          Write-Host "Map webp files: $mapCount"
 
-          ---
+      - name: Generate release notes
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $tag = "${{ steps.version.outputs.tag }}"
 
-          ## 📥 下载说明
+          @"
+          ## Avalon Atlas $tag
 
-          ### 便携版（推荐）
-          下载 ``AvalonAtlas-v$version-portable.zip``，解压后双击 ``AvalonAtlas.exe`` 即可运行。
+          Windows portable release.
 
-          **系统要求**：
-          - Windows 10/11 (64位)
-          - 无需安装 Python 或其他依赖
-          - 约 500MB 磁盘空间
+          ### Download
 
-          ### 使用指南
+          Download ``avalon-atlas-v$version-portable.zip``, extract it, then run ``avalon-atlas.exe``.
 
-          详细使用说明请参考 [README.md](https://github.com/${{ github.repository }}/blob/main/README.md)
+          ### Package Contents
 
-          ### 反馈问题
+          - ``avalon-atlas.exe``
+          - ``config.json``
+          - ``static/`` map data, map previews, and UI assets
+          - ``binaries/`` bundled Tesseract runtime
+          - ``logs/``
+          "@ | Set-Content -Path release_notes.md -Encoding UTF8
 
-          如遇到问题，请在 [Issues](https://github.com/${{ github.repository }}/issues) 提交问题报告。
-          "@
-
-          # 保存到文件供后续步骤使用
-          $fullNotes | Out-File -FilePath "release_notes.md" -Encoding utf8
-
-          Write-Host "发布说明已生成"
-
-      # 8. 创建 GitHub Release
-      - name: 🚀 创建 GitHub Release
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: Avalon Atlas ${{ github.ref_name }}
+          tag_name: ${{ steps.version.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: Avalon Atlas ${{ steps.version.outputs.tag }}
           body_path: release_notes.md
-          draft: false
-          prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') || contains(github.ref_name, 'rc') }}
+          prerelease: ${{ contains(steps.version.outputs.tag, 'alpha') || contains(steps.version.outputs.tag, 'beta') || contains(steps.version.outputs.tag, 'rc') }}
           files: |
-            dist/AvalonAtlas-*.zip
+            build/portable/avalon-atlas-v${{ steps.version.outputs.version }}-portable.zip
           fail_on_unmatched_files: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 9. 上传构建产物（供调试）
-      - name: 📤 上传构建产物
+      - name: Upload build artifact
         uses: actions/upload-artifact@v4
-        if: always()  # 即使失败也上传，便于调试
+        if: always()
         with:
-          name: AvalonAtlas-${{ github.ref_name }}-build
+          name: avalon-atlas-v${{ steps.version.outputs.version }}-portable
           path: |
-            dist/AvalonAtlas/
-            dist/*.zip
+            build/portable/avalon-atlas-v${{ steps.version.outputs.version }}-portable/
+            build/portable/avalon-atlas-v${{ steps.version.outputs.version }}-portable.zip
           retention-days: 30
-          compression-level: 9
-
-      # 10. 发布成功通知
-      - name: ✅ 发布完成
-        if: success()
-        run: |
-          echo "🎉 发布成功！"
-          echo "版本: ${{ github.ref_name }}"
-          echo "下载链接: https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}"

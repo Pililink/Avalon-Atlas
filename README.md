@@ -165,6 +165,31 @@ README.txt
 build/portable/avalon-atlas-v2.0.0-portable.zip
 ```
 
+### GitHub Release 自动发布
+
+推送版本 tag 会触发 GitHub Actions 自动构建 Windows 便携版并创建 Release：
+
+```bash
+git tag v2.0.0
+git push origin v2.0.0
+```
+
+发布流程会执行：
+
+- `npm ci`
+- `npm run check`
+- `scripts/package-portable.ps1`
+- 校验 `avalon-atlas.exe`、`config.json`、`static/`、`binaries/`、`logs/`
+- 上传 `build/portable/avalon-atlas-v<version>-portable.zip` 到 GitHub Releases
+
+tag 版本必须和以下文件中的版本号一致：
+
+- `package.json`
+- `src-tauri/tauri.conf.json`
+- `src-tauri/Cargo.toml`
+
+也可以在 GitHub Actions 页面手动运行 `Release` workflow，并输入不带 `v` 的版本号。
+
 ## 验证命令
 
 ```bash
