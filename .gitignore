@@ -2,6 +2,7 @@
 node_modules/
 
 # Frontend build output
+build/
 dist/
 frontend/dist/
 

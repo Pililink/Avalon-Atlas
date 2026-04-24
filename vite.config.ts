@@ -22,6 +22,8 @@ export default defineConfig(async () => ({
   
   // Multi-page app configuration for region selector overlay
   build: {
+    outDir: "build/frontend",
+    emptyOutDir: true,
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'index.html'),

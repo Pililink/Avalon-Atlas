@@ -31,14 +31,21 @@ Avalon-Atlas/
 ├── docs/                        # 设计、重构、发布和使用文档
 ├── src/                         # Svelte 前端
 │   ├── App.svelte               # 主界面、热键事件、OCR 结果处理
-│   ├── components/              # SearchBox、MapListItem、Settings 等组件
-│   └── lib/types.ts             # 前端数据类型
+│   ├── components/
+│   │   ├── map/                 # 地图条目、地图信息展示
+│   │   ├── overlay/             # 屏幕框选遮罩相关组件
+│   │   ├── search/              # 搜索输入和候选结果
+│   │   └── settings/            # 设置弹窗和语言切换
+│   └── lib/
+│       ├── i18n/                # 中英文词典和语言状态
+│       ├── maps/                # 前端地图数据类型
+│       └── tauri/               # 前端调用 Tauri command 的封装
 ├── src-tauri/                   # Rust / Tauri 后端
 │   ├── src/
 │   │   ├── commands/            # Tauri IPC 命令
 │   │   ├── models/              # 配置和地图数据模型
 │   │   ├── services/            # 搜索、OCR、热键服务
-│   │   └── utils/fuzzy.rs       # 子序列模糊匹配算法
+│   │   └── utils/               # 日志、截图、冻结画面、模糊匹配工具
 │   ├── binaries/                # 打包用 Tesseract 和 tessdata
 │   └── tauri.conf.json          # Tauri 构建和资源配置
 ├── public/static/data/maps.json # 地图数据
@@ -58,11 +65,10 @@ Avalon-Atlas/
 
 `.gitignore` 将以下内容视为本地或生成内容：
 
-- `node_modules/`、`dist/`、`src-tauri/target/`、`target/`：依赖和构建产物。
+- `node_modules/`、`dist/`、`build/`、`src-tauri/target/`、`target/`：依赖和构建产物。
 - `*.log`、`debug/`、`logs/`：运行日志和调试输出。
 - `.omc/`、`**/.omc/`：本地 agent 状态。
-- `backend/`、`frontend/`、`resources/`：旧迁移副本或实验资源，不作为当前主工程入口。
-- `backend/test_*.exe`、`backend/test_*.pdb`、`backend/test_*.rs`：一次性本地测试编译产物。
+- `backend/`、`frontend/`、`resources/`：旧迁移副本或实验资源，已从主工作区清理。
 
 `package-lock.json` 应提交以锁定 npm 依赖。`src-tauri/Cargo.lock` 也不再被忽略；这是桌面应用项目，建议在下一次整理提交时一并纳入版本控制以锁定 Rust 依赖。
 
@@ -109,16 +115,54 @@ npm run tauri build
 npm run tauri build -- --no-bundle
 ```
 
-构建后的可执行文件位于：
+`build/target/release/` 是 Cargo/Tauri 编译输出目录，不建议直接作为分发目录。编译后的可执行文件位于：
 
 ```text
-src-tauri/target/release/avalon-atlas.exe
+build/target/release/avalon-atlas.exe
+```
+
+Vite 前端构建产物位于：
+
+```text
+build/frontend/
 ```
 
 安装包或便携包输出位于：
 
 ```text
-src-tauri/target/release/bundle/
+build/target/release/bundle/
+build/portable/
+```
+
+### 便携分发包
+
+生成可直接压缩分发的目录和 zip：
+
+```bash
+npm run package:portable
+```
+
+交付目录：
+
+```text
+build/portable/avalon-atlas-v2.0.0-portable/
+```
+
+该目录只包含运行需要的文件：
+
+```text
+avalon-atlas.exe
+config.json
+static/
+binaries/
+logs/
+README.txt
+```
+
+同时会生成：
+
+```text
+build/portable/avalon-atlas-v2.0.0-portable.zip
 ```
 
 ## 验证命令
@@ -258,10 +302,9 @@ public/static/maps/
 
 ```text
 casos-aiagsum.webp
-casos-aiagsum.png
 ```
 
-主界面优先加载 `.webp`。
+主界面加载 `.webp`。旧 `.png` 预览图体积较大，当前主工程不再保留。
 
 ### 打包资源
 

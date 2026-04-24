@@ -1,13 +1,13 @@
 <script lang="ts">
-  import SearchBox from "./components/SearchBox.svelte";
-  import MapListItem from "./components/MapListItem.svelte";
-  import Settings from "./components/Settings.svelte";
-  import type { SearchResult } from "./lib/types";
+  import SearchBox from "./components/search/SearchBox.svelte";
+  import MapListItem from "./components/map/MapListItem.svelte";
+  import Settings from "./components/settings/Settings.svelte";
+  import type { SearchResult } from "./lib/maps/types";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { listen } from "@tauri-apps/api/event";
-  import { invoke } from "@tauri-apps/api/core";
   import { onMount, onDestroy } from "svelte";
   import { normalizeLocale, setLocale, t, type Locale } from "./lib/i18n";
+  import { callCommand } from "./lib/tauri/client";
 
   interface BackendConfig {
     mouse_hotkey: string;
@@ -59,7 +59,7 @@
   // Load config from backend on mount
   async function loadConfig() {
     try {
-      const backendConfig = await invoke<BackendConfig>('get_config');
+      const backendConfig = await callCommand<BackendConfig>('get_config');
       const language = normalizeLocale(backendConfig.language);
       config = {
         mouseHotkey: backendConfig.mouse_hotkey,
@@ -211,7 +211,7 @@
     try {
       console.log('Mouse OCR triggered at:', mouseX, mouseY);
       // Python version: mouse at bottom center of region
-      const results = await invoke<SearchResult[]>('capture_mouse_ocr', {
+      const results = await callCommand<SearchResult[]>('capture_mouse_ocr', {
         width: config.ocrRegion.width,
         height: config.ocrRegion.height,
         verticalOffset: config.ocrRegion.verticalOffset
@@ -259,7 +259,7 @@
     console.log('Performing OCR on region:', x, y, width, height);
     
     try {
-      const results = await invoke<SearchResult[]>('capture_region_ocr', {
+      const results = await callCommand<SearchResult[]>('capture_region_ocr', {
         x, y, width, height
       });
       
@@ -286,7 +286,7 @@
     
     // Save to backend
     try {
-      await invoke('save_config', {
+      await callCommand('save_config', {
         newConfig: {
           mouse_hotkey: newConfig.mouseHotkey,
           chat_hotkey: newConfig.regionHotkey,  // Backend uses chat_hotkey field
