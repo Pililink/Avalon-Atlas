@@ -12,6 +12,10 @@ The current application is built with Tauri v2, Svelte 5, TypeScript, and Rust.
 
 > Unofficial community tool for Albion Online. Avalon Atlas does not require game account credentials and OCR runs locally.
 
+## Screenshot
+
+![Avalon Atlas compact in-game assistant panel](docs/assets/avalon-atlas-panel.png)
+
 ## Features
 
 - Fast fuzzy search for Avalon map names, including typo-tolerant and subsequence matching.
@@ -180,6 +184,8 @@ Important paths:
 - `src-tauri/binaries/tesseract/`: bundled Tesseract runtime.
 - `src-tauri/binaries/tessdata/`: bundled OCR language data.
 - `src-tauri/src/services/`: search, OCR, hotkey, and supporting services.
+
+More maintenance notes are available in [docs/](docs/README.md).
 
 ## Configuration
 
