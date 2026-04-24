@@ -1,7 +1,7 @@
-use tauri::State;
-use std::sync::Arc;
-use crate::services::search_engine::SearchEngine;
 use crate::models::map::SearchResult;
+use crate::services::search_engine::SearchEngine;
+use std::sync::Arc;
+use tauri::State;
 
 #[tauri::command]
 pub async fn search_maps(
@@ -12,7 +12,7 @@ pub async fn search_maps(
     if query.len() < 2 {
         return Ok(vec![]);
     }
-    
+
     let results = engine.search(&query, max_results.unwrap_or(25));
     Ok(results)
 }

@@ -6,7 +6,7 @@ pub struct MapRecord {
     #[serde(default)]
     pub slug: String,
     pub tier: String,
-    #[serde(rename = "type")]
+    #[serde(alias = "type")]
     pub map_type: String,
     pub chests: Chests,
     pub dungeons: Dungeons,
@@ -47,4 +47,45 @@ pub struct SearchResult {
     pub method: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub positions: Option<Vec<usize>>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::MapRecord;
+    use serde_json::json;
+
+    #[test]
+    fn map_record_accepts_legacy_type_and_serializes_map_type() {
+        let record: MapRecord = serde_json::from_value(json!({
+            "name": "casos-aiagsum",
+            "tier": "T4",
+            "type": "TUNNEL_ROYAL",
+            "chests": {
+                "blue": 1,
+                "green": 2,
+                "highGold": 3,
+                "lowGold": 4
+            },
+            "dungeons": {
+                "solo": 1,
+                "group": 0,
+                "avalon": 0
+            },
+            "resources": {
+                "rock": 1,
+                "wood": 2,
+                "ore": 3,
+                "fiber": 4,
+                "hide": 5
+            },
+            "brecilien": 0
+        }))
+        .expect("legacy type field should deserialize");
+
+        let serialized = serde_json::to_value(record).expect("record should serialize");
+
+        assert_eq!(serialized["map_type"], "TUNNEL_ROYAL");
+        assert!(serialized.get("type").is_none());
+        assert_eq!(serialized["chests"]["highGold"], 3);
+    }
 }

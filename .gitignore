@@ -1,20 +1,46 @@
-# Rust / Tauri
-/target
-/src-tauri/target
-/src-tauri/gen/schemas
-/src-tauri/Cargo.lock
+# Dependencies
+node_modules/
 
-# Node / Frontend
-node_modules
-dist
+# Frontend build output
+dist/
+frontend/dist/
+
+# Rust / Tauri build output
+target/
+src-tauri/target/
+backend/target/
+
+# Generated Tauri schemas
+src-tauri/gen/schemas/
+backend/gen/schemas/
+
+# Local runtime config and logs
 .env
-.DS_Store
+.env.*
+*.log
+debug/
+logs/
+backend/logs/
 
-# IDE
-.idea
-.vscode
+# Local agent / migration scratch state
+.omc/
+**/.omc/
+backend/
+frontend/
+resources/
+
+# One-off local Rust test binaries
+backend/test_*.exe
+backend/test_*.pdb
+backend/test_*.rs
+
+# IDE / editor
+.idea/
+.vscode/
 *.swp
+*.swo
 *.iml
 
 # OS
+.DS_Store
 Thumbs.db

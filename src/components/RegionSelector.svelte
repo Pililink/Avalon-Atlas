@@ -1,5 +1,6 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
+  import { t } from '../lib/i18n';
 
   export let active = false;
 
@@ -87,7 +88,7 @@
     {/if}
     
     <div class="hint">
-      拖动鼠标选择区域 · ESC 取消
+      {$t("region.hint")}
     </div>
   </div>
 {/if}

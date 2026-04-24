@@ -15,7 +15,17 @@
         width: 100%;
         height: 100%;
         overflow: hidden;
-        background: transparent;
+        background: #000;
+      }
+
+      .frozen-shot {
+        position: fixed;
+        inset: 0;
+        width: 100vw;
+        height: 100vh;
+        object-fit: fill;
+        user-select: none;
+        pointer-events: none;
       }
       
       .overlay {
@@ -24,7 +34,7 @@
         left: 0;
         width: 100vw;
         height: 100vh;
-        background: rgba(0, 0, 0, 0.3);
+        background: rgba(0, 0, 0, 0.18);
         cursor: crosshair;
       }
       
@@ -62,11 +72,30 @@
         font-family: system-ui, -apple-system, sans-serif;
         pointer-events: none;
       }
+
+      .load-error {
+        position: absolute;
+        top: 64px;
+        left: 50%;
+        transform: translateX(-50%);
+        display: none;
+        max-width: min(720px, calc(100vw - 32px));
+        background: rgba(120, 22, 22, 0.92);
+        color: #fff;
+        padding: 8px 12px;
+        border: 1px solid rgba(255, 180, 180, 0.6);
+        border-radius: 6px;
+        font: 12px/1.4 system-ui, -apple-system, sans-serif;
+        pointer-events: none;
+        word-break: break-all;
+      }
     </style>
   </head>
   <body tabindex="0">
+    <img class="frozen-shot" id="frozen-shot" alt="" />
     <div class="overlay" id="overlay">
       <div class="hint">拖动鼠标选择区域 · ESC 取消</div>
+      <div class="load-error" id="load-error"></div>
       <div class="selection-rect" id="selection" style="display: none;">
         <div class="size-label" id="size-label"></div>
       </div>
@@ -74,12 +103,41 @@
     
     <script type="module">
       import { emit } from '@tauri-apps/api/event';
+      import { invoke } from '@tauri-apps/api/core';
       import { getCurrentWindow } from '@tauri-apps/api/window';
       
       const overlay = document.getElementById('overlay');
       const selection = document.getElementById('selection');
       const sizeLabel = document.getElementById('size-label');
+      const frozenShot = document.getElementById('frozen-shot');
+      const loadError = document.getElementById('load-error');
       const currentWindow = getCurrentWindow();
+      const params = new URLSearchParams(window.location.search);
+      const originX = Number(params.get('originX') || '0');
+      const originY = Number(params.get('originY') || '0');
+
+      async function loadFrozenShot() {
+        frozenShot.addEventListener('load', () => {
+          console.log('Frozen screenshot loaded from memory');
+        });
+        frozenShot.addEventListener('error', () => {
+          const message = '冻结截图加载失败';
+          console.error(message);
+          loadError.textContent = message;
+          loadError.style.display = 'block';
+        });
+
+        try {
+          frozenShot.src = await invoke('read_frozen_screen_data_url');
+        } catch (error) {
+          const message = `冻结图片加载失败: ${error}`;
+          console.error(message);
+          loadError.textContent = message;
+          loadError.style.display = 'block';
+        }
+      }
+
+      loadFrozenShot();
       
       // Ensure window is focused to receive keyboard events
       window.focus();
@@ -134,9 +192,9 @@
         const height = Math.abs(currentY - startY);
         
         if (width > 10 && height > 10) {
+          console.log('Region selected:', { x: x + originX, y: y + originY, width, height });
           // Emit the selection to the main window
-          // These are already screen coordinates since this is a fullscreen window
-          await emit('region-selected', { x, y, width, height });
+          await emit('region-selected', { x: x + originX, y: y + originY, width, height });
         }
         
         // Close this overlay window

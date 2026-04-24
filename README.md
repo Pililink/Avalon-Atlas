@@ -1,432 +1,328 @@
-# Avalon-Online-Atlas
+# Avalon Atlas
 
-<div align="center">
+Avalon Atlas 是一个面向 Albion Online 阿瓦隆地图的 Windows 桌面查询工具。当前版本已经迁移到 Tauri v2 + Svelte 5 + Rust：前端负责搜索交互和结果展示，Rust 后端负责地图数据加载、模糊搜索、截图 OCR、全局热键和配置持久化。
 
-![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)
-![License](https://img.shields.io/badge/license-MIT-green.svg)
-![Platform](https://img.shields.io/badge/platform-Windows-lightgrey.svg)
+## 当前能力
 
-阿瓦隆地图查询桌面工具 - 支持智能搜索与 OCR 识别
+- 地图名模糊搜索：支持子序列匹配、字符高亮、相似字符容错，例如 `c4s0s` 可匹配 `casos-*`。
+- 地图信息展示：显示等级、通道类型、箱子、洞穴、资源、布雷希恩入口等数据。
+- 地图预览：鼠标悬停已选地图时显示 `public/static/maps/` 下的地图图片。
+- 鼠标 OCR：默认 `Ctrl+Shift+Q`，截取鼠标上方区域并识别地图名。
+- 框选 OCR：默认 `Ctrl+Shift+W`，打开透明遮罩窗口，拖拽选择屏幕区域后识别多个地图名。
+- 热键设置：在应用内设置窗口录制热键，保存后立即重新注册。
+- 窗口置顶：主界面可切换 always-on-top 状态。
+- 多语言界面：内置中文和英文，可在设置窗口切换并持久化。
+- 本地配置：首次运行自动生成 `config.json`，后续启动自动加载。
 
-[功能特性](#核心特性) • [快速开始](#快速开始) • [使用指南](#使用指南) • [配置说明](#配置说明) • [常见问题](#常见问题)
+## 技术栈
 
-</div>
+- 前端：Svelte 5、TypeScript、Vite
+- 桌面框架：Tauri v2
+- 后端：Rust
+- OCR：随应用打包的 Tesseract 可执行文件和 `eng.traineddata`
+- 截图：`screenshots`
+- 全局热键：`tauri-plugin-global-shortcut`
 
----
+## 目录结构
 
-## 📖 简介
-
-Avalon Atlas 是一款专为阿瓦隆在线（Albion Online）玩家设计的桌面端辅助工具，用于快速查询地图的箱子、资源、洞穴等详细信息。
-
-支持两种查询方式：
-- 🔍 **手动输入**：智能模糊搜索，支持拼写容错和字符相似性匹配
-- ⌨️ **双热键 OCR**：游戏内一键截图识别地图名称，支持鼠标识别和聊天框区域识别
-
-## ✨ 核心特性
-
-### 🎯 智能搜索
-- **子序列模糊匹配**：内置动态规划评分算法，即使输入不完整也能精准匹配
-- **字符相似性匹配**：自动处理容易混淆的字符（i/l/1/|, o/0, s/5, z/2）
-- **高亮显示**：搜索结果自动高亮匹配字符
-- **实时预览**：鼠标悬停显示地图完整大图
-- **快速排序**：按匹配度、地图等级智能排序
-
-### 🖼️ 双热键 OCR 识别
-- **鼠标 OCR**：全局热键截图识别地图名称（默认 `Ctrl+Shift+Q`）
-- **聊天框 OCR**：框选区域批量识别多个地图名（默认 `Ctrl+Shift+W`）
-- **图像预处理**：灰度化、对比度增强、锐化处理，提升识别率
-- **智能矫正**：自动修正 OCR 常见识别错误（数字→字母）
-- **双引擎支持**：RapidOCR（默认）或 Tesseract 可选
-- **调试模式**：保存原始截图和预处理后图像用于排查问题
-
-### 📊 数据展示
-- **地图详情**：箱子数量、洞穴类型、资源分布、兔子洞数量
-- **中文描述**：地图类型显示中文描述（如"通向外界-皇家大陆(蓝/黄区)"）
-- **格式化复制**：双击复制完整的格式化地图信息
-- **缩略图预览**：列表显示地图缩略图
-- **等级标注**：T4/T6/T8 等级清晰标识
-
-### 🎨 用户界面
-- **现代化设计**：基于 Tauri + Svelte 5 构建
-- **跨平台原生性能**：使用 Rust 后端，提供接近原生应用的性能
-- **窗口图标**：任务栏和标题栏显示应用图标
-- **窗口置顶**：一键置顶功能，方便游戏内查看
-- **响应式布局**：自适应窗口大小
-- **深色主题**：护眼舒适的配色方案
-- **轻量高效**：启动快速，内存占用低
-
-### 🔄 自动更新
-- **版本检查**：启动时自动检查 GitHub Releases 新版本
-- **一键下载**：发现新版本时提供下载链接
-- **更新说明**：显示详细的版本更新内容
-
-### 📝 日志系统
-- **文件日志**：自动保存日志到 `debug/avalon_atlas.log`
-- **日志轮转**：10MB 单文件大小，保留最近 5 个备份
-- **调试信息**：OCR 识别过程、搜索匹配、错误堆栈等详细记录
-
----
-
-## 🚀 快速开始
-
-### 系统要求
-
-- **操作系统**: Windows 10/11 (64位)
-- **内存**: 至少 4GB RAM
-- **磁盘空间**: 约 500MB
-
-### 下载与安装
-
-#### 方式一：下载发行版（推荐）
-
-1. 前往 [Releases](https://github.com/Pililink/Avalon-Atlas/releases) 页面
-2. 下载最新版本的 `AvalonAtlas-v2.0.0-setup.exe` 或便携版
-3. 运行安装程序或解压到任意目录
-4. 启动应用程序
-
-#### 方式二：从源码构建
-
-```bash
-# 克隆仓库
-git clone https://github.com/Pililink/Avalon-Atlas.git
-cd Avalon-Atlas
-
-# 安装前端依赖
-npm install
-
-# 运行开发模式
-npm run tauri dev
-
-# 构建可执行文件
-npm run tauri build
-# 输出在 src-tauri/target/release/bundle/ 目录
+```text
+Avalon-Atlas/
+├── .github/workflows/           # GitHub Actions 发布与构建流程
+├── docs/                        # 设计、重构、发布和使用文档
+├── src/                         # Svelte 前端
+│   ├── App.svelte               # 主界面、热键事件、OCR 结果处理
+│   ├── components/              # SearchBox、MapListItem、Settings 等组件
+│   └── lib/types.ts             # 前端数据类型
+├── src-tauri/                   # Rust / Tauri 后端
+│   ├── src/
+│   │   ├── commands/            # Tauri IPC 命令
+│   │   ├── models/              # 配置和地图数据模型
+│   │   ├── services/            # 搜索、OCR、热键服务
+│   │   └── utils/fuzzy.rs       # 子序列模糊匹配算法
+│   ├── binaries/                # 打包用 Tesseract 和 tessdata
+│   └── tauri.conf.json          # Tauri 构建和资源配置
+├── public/static/data/maps.json # 地图数据
+├── public/static/maps/          # 地图预览图，文件名对应地图 slug
+├── public/static/assets/        # 箱子、洞穴、资源等图标
+├── scripts/                     # 发布、清理和便携包脚本
+├── index.html
+├── region-selector.html         # 框选 OCR 遮罩页
+├── package.json
+├── package-lock.json            # npm 依赖锁定
+└── vite.config.ts
 ```
 
-**系统要求**:
+当前主入口以根目录 `src/` 和 `src-tauri/` 为准。迁移过程副本和本地构建目录不参与当前应用入口。
+
+### 忽略目录约定
+
+`.gitignore` 将以下内容视为本地或生成内容：
+
+- `node_modules/`、`dist/`、`src-tauri/target/`、`target/`：依赖和构建产物。
+- `*.log`、`debug/`、`logs/`：运行日志和调试输出。
+- `.omc/`、`**/.omc/`：本地 agent 状态。
+- `backend/`、`frontend/`、`resources/`：旧迁移副本或实验资源，不作为当前主工程入口。
+- `backend/test_*.exe`、`backend/test_*.pdb`、`backend/test_*.rs`：一次性本地测试编译产物。
+
+`package-lock.json` 应提交以锁定 npm 依赖。`src-tauri/Cargo.lock` 也不再被忽略；这是桌面应用项目，建议在下一次整理提交时一并纳入版本控制以锁定 Rust 依赖。
+
+## 快速开始
+
+### 环境要求
+
+- Windows 10/11 64 位
 - Node.js 18+ 和 npm
-- Rust 1.70+（用于 Tauri）
-- Windows SDK（Windows 平台）
+- Rust stable toolchain
+- Windows 平台构建 Tauri 时需要可用的 MSVC / Windows SDK 环境
 
-### 首次运行
+### 安装依赖
 
-1. **自动生成配置**：首次运行会在程序目录生成 `config.json`
-2. **设置热键**：在设置对话框中配置鼠标 OCR 和聊天框 OCR 热键
-3. **测试搜索**：在搜索框输入地图名称（如 `casos`），查看结果
-4. **测试置顶**：点击底部"📌 置顶"按钮，测试窗口置顶功能
+```bash
+npm install
+```
 
----
+### 开发运行
 
-## 📚 使用指南
+```bash
+npm run tauri dev
+```
+
+Tauri 会启动 Vite 开发服务，端口固定为 `1420`。如果端口被占用，开发命令会失败，需要先释放该端口。
+
+### 前端预览
+
+```bash
+npm run dev
+```
+
+这个命令只启动 Web 前端。涉及 Tauri IPC、OCR、全局热键、窗口置顶的功能需要用 `npm run tauri dev`。
+
+### 构建
+
+```bash
+npm run tauri build
+```
+
+仅验证 Tauri 应用本体、不生成安装包时可运行：
+
+```bash
+npm run tauri build -- --no-bundle
+```
+
+构建后的可执行文件位于：
+
+```text
+src-tauri/target/release/avalon-atlas.exe
+```
+
+安装包或便携包输出位于：
+
+```text
+src-tauri/target/release/bundle/
+```
+
+## 验证命令
+
+```bash
+npm run check
+npm run build
+cargo test --manifest-path src-tauri/Cargo.toml
+cargo build --manifest-path src-tauri/Cargo.toml --release
+npm run tauri build -- --no-bundle
+```
+
+当前重构后的基线验证：
+
+- `npm run check`：Svelte 类型检查通过
+- `npm run build`：Vite 生产构建通过
+- `cargo test --manifest-path src-tauri/Cargo.toml`：Rust 单元测试通过
+- `cargo build --manifest-path src-tauri/Cargo.toml --release`：release 编译通过
+- `npm run tauri build -- --no-bundle`：Tauri no-bundle 构建通过
+
+## 使用说明
 
 ### 手动搜索
 
-1. 在搜索框输入地图名称（支持部分拼写）
-2. 程序自动显示匹配结果（最多 20 条）
-3. 点击结果项添加到已选列表
-4. 鼠标悬停在已选项上查看完整地图大图
-5. 双击地图项复制完整的格式化信息到剪贴板
+1. 在顶部搜索框输入地图名或片段，例如 `casos`、`ca-ai`、`c4s0s`。
+2. 下拉列表展示匹配结果。
+3. 点击结果项添加到已选地图列表。
+4. 鼠标悬停已选项查看地图预览。
+5. 点击已选项右侧删除按钮可移除该地图。
 
-**复制格式示例**：
+### 鼠标 OCR
+
+1. 将鼠标放到游戏内地图名称下方。
+2. 按下默认热键 `Ctrl+Shift+Q`。
+3. 应用截取鼠标上方区域，运行 OCR，并把匹配到的地图加入列表。
+
+截图区域默认逻辑：
+
+```text
+left = mouse_x - width / 2
+top  = mouse_y - height - vertical_offset
 ```
-地图名: Fones-Opavun
-级别: 8
-类型: 金门
 
-资源数量:
-金洞: 1
-木点: 1
-绿箱: 2 | 金箱: 3
-```
+也就是说鼠标位于截图矩形底边中心附近。
 
-**搜索技巧**：
-- 输入 `cas` 可以匹配 `casos-aiagsum`
-- 输入 `ca-ai` 可以匹配 `casos-aiagsum`
-- 输入 `i` 可以匹配包含 `l`、`1`、`|` 的地图名（字符相似性）
-- 不区分大小写
-- 支持拼写容错（如 `c4s0s` 会自动矫正为 `casos`）
+### 框选 OCR
 
-### 双热键 OCR
+1. 按下默认热键 `Ctrl+Shift+W`。
+2. 屏幕出现透明遮罩。
+3. 拖拽选择聊天框或包含地图名的区域。
+4. 应用识别区域内文本，并尝试把多个地图名加入列表。
 
-#### 鼠标 OCR（推荐热键：Ctrl+Shift+Q）
-1. 确保热键已设置（在设置对话框中配置）
-2. 在游戏中，将鼠标移动到传送门图标处，游戏内弹出地图名
-3. 按下设置的热键（默认 `Ctrl+Shift+Q`）
-4. 程序自动截取鼠标上方区域识别文字
-5. 识别成功后自动添加到已选列表
+### 设置
 
-#### 聊天框 OCR（推荐热键：Ctrl+Shift+W）
-1. 按下设置的热键（默认 `Ctrl+Shift+W`）
-2. 拖动鼠标框选聊天框区域
-3. 自动识别区域内所有地图名
-4. 支持标准地图名和缩写格式（前 3 字符）
-5. 可同时识别多个地图名（如聊天框显示多个地图时）
+主界面右上角设置按钮可修改：
 
-**OCR 最佳实践**：
-- **鼠标 OCR**：鼠标放在地图名称正下方（距离约 1-2 厘米）
-- **聊天框 OCR**：框选范围要完整包含地图名称
-- **调试模式**：开启后会保存原始截图和预处理后的图像到 `debug/` 目录
-- 确保地图名称清晰可见，无遮挡
-- 避免在名称上有光标或高亮
-- 如识别失败，可查看 `debug/` 目录的截图和日志文件 `debug/avalon_atlas.log`
+- 鼠标 OCR 热键
+- 框选 OCR 热键
+- 界面语言（中文 / English）
+- OCR 调试开关
 
-### 窗口置顶
+保存后会写入 `config.json`，并立即重新注册全局热键。
 
-1. 点击底部"📌 置顶"按钮切换置顶状态
-2. 置顶后窗口始终保持在最前
-3. 置顶状态会自动保存，下次启动恢复
-4. 再次点击按钮取消置顶
+## 配置文件
 
-### 热键设置
+`config.json` 位于应用当前工作目录。缺失时会自动生成；缺少字段时会使用默认值补齐。
 
-1. 点击"设置"按钮打开设置对话框
-2. 在对应的热键输入框中按下想要设置的组合键
-3. 程序自动捕获并显示
-4. 点击"保存"确认
-5. 配置自动保存到 `config.json`
-
-**推荐组合键**：
-- `Ctrl+Shift+Q`
-- `Ctrl+Alt+M`
-- `Ctrl+Shift+F`
-
----
-
-## ⚙️ 配置说明
-
-配置文件位于程序根目录的 `config.json`，支持以下选项：
+当前支持字段：
 
 ```json
 {
-  "maps_data_path": "public/data/maps.json",  // 地图数据文件路径
-  "static_root": "public",                     // 静态资源目录
-  "hotkey": "ctrl+shift+q",                    // 鼠标 OCR 热键
-  "chat_hotkey": "ctrl+shift+w",               // 聊天框 OCR 热键
-  "debounce_ms": 200,                          // 搜索防抖延迟(毫秒)
-  "always_on_top": false,                      // 窗口是否始终置顶
-  "ocr_backend": "rapidocr",                   // OCR 引擎: rapidocr/tesseract/auto
+  "mouse_hotkey": "ctrl+shift+q",
+  "chat_hotkey": "ctrl+shift+w",
+  "ocr_debug": true,
   "ocr_region": {
-    "width": 600,                              // 截图宽度
-    "height": 80,                              // 截图高度
-    "vertical_offset": 0                       // 垂直偏移量
+    "width": 600,
+    "height": 80,
+    "vertical_offset": 0
   },
-  "ocr_debug": true,                           // 是否保存 OCR 截图到 debug/
-  "debug_dir": "debug"                         // 调试文件保存目录
+  "always_on_top": false,
+  "debounce_ms": 200,
+  "language": "zh-CN"
 }
 ```
 
-### 配置项说明
+字段说明：
 
-#### OCR 引擎选择
+- `mouse_hotkey`：鼠标 OCR 全局热键。
+- `chat_hotkey`：框选 OCR 全局热键。
+- `ocr_debug`：保留给 OCR 调试流程，默认开启。
+- `ocr_region.width`：鼠标 OCR 截图宽度。
+- `ocr_region.height`：鼠标 OCR 截图高度。
+- `ocr_region.vertical_offset`：鼠标 OCR 截图区域向上的额外偏移。
+- `always_on_top`：窗口置顶状态。
+- `debounce_ms`：搜索防抖配置，当前前端搜索逻辑仍以组件实现为准。
+- `language`：界面语言，当前支持 `zh-CN` 和 `en-US`。缺失或非法值会回退到 `zh-CN`。
 
-- **`rapidocr`** (推荐): 无需额外安装，识别速度快
-- **`tesseract`**: 需安装 Tesseract-OCR，准确率稍高
-- **`auto`**: 优先 RapidOCR，失败时回退 Tesseract
+热键字符串使用 `ctrl`、`shift`、`alt`、`super` 作为修饰键，例如：
 
-#### OCR 区域调整
-
-- `width`: 截图宽度，默认 600px（覆盖大部分地图名称）
-- `height`: 截图高度，默认 80px（单行文本）
-- `vertical_offset`: 向上偏移，默认 0（鼠标在底边中点）
-
-如识别效果不佳，可尝试调整这些参数。
-
-#### 调试模式
-
-开启 `ocr_debug: true` 后（默认开启），每次 OCR 会保存原始截图和预处理后的图像到 `debug/` 目录，文件名包含时间戳。可用于：
-- 检查截图范围是否正确
-- 对比原始图像和预处理后的效果
-- 排查 OCR 识别问题
-- 调整 `ocr_region` 参数
-
-#### 日志文件
-
-程序运行日志保存在 `debug/avalon_atlas.log`，包含：
-- 启动信息和配置加载
-- OCR 识别详细过程
-- 搜索匹配结果
-- 错误堆栈和异常信息
-- 自动更新检查结果
-
-日志文件自动轮转，单个文件最大 10MB，保留最近 5 个备份。
-
----
-
-## 🗂️ 项目结构
-
-```
-Avalon-Atlas/
-├── src/                      # Svelte 前端代码
-│   ├── App.svelte            # 主应用组件
-│   ├── app.css               # 全局样式
-│   └── ...                   # 其他组件和工具
-├── src-tauri/                # Rust 后端代码
-│   ├── src/
-│   │   ├── main.rs           # Tauri 主入口
-│   │   ├── services/         # 后端服务（OCR、热键等）
-│   │   └── ...
-│   ├── Cargo.toml            # Rust 依赖配置
-│   └── tauri.conf.json       # Tauri 配置文件
-├── public/                   # 静态资源
-│   ├── data/
-│   │   └── maps.json         # 地图数据（400+ 张地图）
-│   └── maps/                 # 地图预览图（.png/.webp）
-├── package.json              # Node.js 依赖
-├── vite.config.ts            # Vite 构建配置
-└── config.json               # 用户配置文件（运行时生成）
+```text
+ctrl+shift+q
+ctrl+alt+m
+ctrl+super+w
 ```
 
-### 数据文件说明
+## 数据和资源
 
-#### `public/data/maps.json`
-包含所有地图的详细信息：
-- 名称、等级 (T4/T6/T8)
-- 地图类型（王城/黑区/深层等 12 种）
-- 箱子数量（蓝/绿/金箱、金王座）
-- 洞穴数量（单人/蓝洞/金洞）
-- 资源分布（石/木/矿/棉/皮）
-- 传送门数量
+### 地图数据
 
-#### `public/maps/`
-地图预览图，命名格式：`地图名.png` 或 `地图名.webp`
-- 示例：`casos-aiagsum.png`
-- 支持 WebP 格式（体积更小）
+地图数据文件：
 
----
+```text
+public/static/data/maps.json
+```
 
-## ❓ 常见问题
+每条记录包含：
 
-### 程序无法启动
+- `name`
+- `tier`
+- `type`
+- `chests`
+- `dungeons`
+- `resources`
+- `brecilien`
 
-**问题**：双击 exe 无反应或闪退
-**解决**：
-1. 检查是否被杀毒软件拦截（添加到白名单）
-2. 确认系统为 Windows 10/11 64 位
-3. 查看 `logs/` 目录是否有错误日志
-4. 尝试以管理员身份运行
+Rust 后端加载时会把原始 `type` 字段映射为前端使用的 `map_type`。
+
+### 地图图片
+
+地图预览图目录：
+
+```text
+public/static/maps/
+```
+
+图片文件名应和地图 slug 对应，例如：
+
+```text
+casos-aiagsum.webp
+casos-aiagsum.png
+```
+
+主界面优先加载 `.webp`。
+
+### 打包资源
+
+`src-tauri/tauri.conf.json` 会把以下资源加入 Tauri bundle：
+
+```text
+../public/static/data/maps.json -> static/data/maps.json
+src-tauri/binaries/tesseract/   -> binaries/tesseract/
+src-tauri/binaries/tessdata/    -> binaries/tessdata/
+```
+
+开发环境会从仓库路径读取数据；打包后会从 Tauri resource 目录读取。
+
+## 常见问题
+
+### 搜索没有结果
+
+- 输入至少 2 个有效字符。
+- 确认 `public/static/data/maps.json` 存在且 JSON 可解析。
+- 尝试输入更长片段，例如从 `ca` 改为 `casos`。
+
+### 地图类型显示为空或原始英文
+
+- 确认后端返回字段为 `map_type`。
+- 未在前端映射表中的类型会直接显示原始值。
+
+### OCR 没有识别到地图
+
+- 调整鼠标位置，让地图名完整落在鼠标上方截图区域。
+- 增大 `ocr_region.width` 或 `ocr_region.height`。
+- 调整 `ocr_region.vertical_offset`。
+- 确认 `src-tauri/binaries/tesseract/tesseract.exe` 和 `src-tauri/binaries/tessdata/eng.traineddata` 存在。
 
 ### 热键不生效
 
-**问题**：按下热键无响应
-**解决**：
-1. 检查热键是否与其他软件冲突（如 QQ、微信）
-2. 尝试更换其他组合键
-3. 确认程序在后台运行（任务栏托盘）
-4. 重启程序后重新设置热键
+- 检查热键是否被其他程序占用。
+- 尝试换成其他组合键后保存。
+- 以管理员身份运行可能改善部分游戏或全屏场景下的热键捕获。
 
-### OCR 识别失败
+### Tauri 构建提示版本不匹配
 
-**问题**：热键触发后提示"未识别到有效文本"
-**解决**：
-1. 开启 `ocr_debug: true`，检查 `debug/` 目录截图
-2. 确认鼠标位置在地图名称正下方
-3. 调整 `ocr_region` 参数（增大 width 或 height）
-4. 切换 OCR 引擎（`rapidocr` ↔ `tesseract`）
-5. 确保地图名称清晰、无遮挡
+确保 npm 侧 `@tauri-apps/api`、`@tauri-apps/cli` 与 Rust 侧 Tauri 版本在同一 minor 系列。当前 npm 侧为 `2.10.1`，Rust lock 中 Tauri 为 `2.10.x`。
 
-### OCR 识别错误
+## 开发文档
 
-**问题**：识别出的地图名不正确
-**说明**：程序内置智能矫正，会自动修正常见错误：
-- 数字 → 字母 (`0→o`, `1→l`, `5→s`)
-- 特殊符号 → 连字符 (`_→-`)
-- 模糊匹配已知地图名
+- `docs/Tauri重构设计方案.md`
+- `docs/plan/01_overview.md`
+- `docs/plan/02_module_design.md`
+- `docs/plan/03_ui_interaction.md`
+- `docs/plan/04_search_algorithm.md`
+- `docs/CHAT_OCR_GUIDE.md`
+- `docs/产品化与打包发布规范.md`
+- `docs/发布检查清单.md`
 
-如仍有问题：
-1. 检查 `debug/` 截图是否包含完整地图名
-2. 提交 Issue 附上截图，帮助改进算法
+## 当前限制
 
-### 搜索无结果
+- 当前 OCR 实现使用 Tesseract；README 不再声明 RapidOCR 已集成。
+- 当前仓库未实现自动更新检查。
+- 当前日志主要是控制台输出；README 不再声明文件日志轮转已实现。
+- 跨平台能力来自 Tauri 技术栈，但当前验证重点是 Windows。
 
-**问题**：输入地图名但没有匹配结果
-**解决**：
-1. 检查输入长度（最少 2 个字符）
-2. 尝试输入更多字符或部分拼写
-3. 确认 `public/data/maps.json` 存在且未损坏
-4. 查看日志是否有数据加载错误
+## 许可证和数据来源
 
-### 配置文件丢失
-
-**问题**：`config.json` 被删除或损坏
-**解决**：
-- 重新启动程序，会自动生成默认配置
-- 或手动复制上述"配置说明"中的 JSON 内容
-
----
-
-## 🔧 开发文档
-
-- **架构设计**: 参见 `CLAUDE.md`
-- **搜索算法**: 参见 `docs/plan/04_search_algorithm.md`
-- **模块设计**: 参见 `docs/plan/02_module_design.md`
-- **UI 交互**: 参见 `docs/plan/03_ui_interaction.md`
-
-### 技术栈
-
-**前端**:
-- **框架**: Svelte 5 - 轻量级响应式前端框架
-- **构建工具**: Vite - 快速的前端构建工具
-- **TypeScript**: 类型安全支持
-
-**后端**:
-- **运行时**: Tauri 2.0 - 使用 Rust 构建的轻量级跨平台应用框架
-- **语言**: Rust - 高性能、内存安全的系统编程语言
-- **OCR**: 基于 Rust 的 OCR 引擎
-- **热键**: global-hotkey - 全局热键管理
-- **截图**: screenshots - 跨平台截图库
-
-**依赖管理**:
-- **前端**: npm / Node.js
-- **后端**: Cargo / Rust
-
----
-
-## 📄 许可证
-
-本项目采用 [MIT License](LICENSE) 开源。
-
-### 第三方依赖
-
-本项目使用以下开源库：
-- **Tauri**: MIT/Apache-2.0
-- **Svelte**: MIT
-- **Vite**: MIT
-- **Rust Crates**: 详见 `src-tauri/Cargo.toml`
-
-完整依赖列表见 `package.json` 和 `src-tauri/Cargo.toml`。
-
-### 数据来源
-
-地图数据来源于 [ava-maps](https://github.com/lucioreyli/ava-maps)，感谢原作者的贡献。
-
----
-
-## 🤝 贡献
-
-欢迎提交 Issue 和 Pull Request！
-
-### 报告问题
-
-如遇到问题，请提供：
-1. 操作系统版本
-2. 程序版本号
-3. 错误截图或日志
-4. 复现步骤
-
-### 功能建议
-
-欢迎在 [Issues](https://github.com/Pililink/Avalon-Atlas/issues) 提出新功能建议。
-
----
-
-## 🙏 致谢
-
-- 地图数据提供：[lucioreyli/ava-maps](https://github.com/lucioreyli/ava-maps)
-- 灵感来源：阿瓦隆在线玩家社区
-
----
-
-<div align="center">
-
-**如果这个工具对你有帮助，请给个 ⭐ Star 支持一下！**
-
-</div>
+本项目使用 MIT License。地图数据来源于 ava-maps 相关数据整理，静态资源与打包资源随项目一起发布。

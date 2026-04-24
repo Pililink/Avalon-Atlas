@@ -14,26 +14,32 @@ const GAP_PENALTY: f64 = 2.0;
 
 /// similar chars mapping
 fn chars_match(ch1: char, ch2: char) -> bool {
-    if ch1 == ch2 {
-        return true;
-    }
-    match ch1 {
-        'i' | 'l' | '1' | '|' => matches!(ch2, 'i' | 'l' | '1' | '|'),
-        'o' | '0' => matches!(ch2, 'o' | '0'),
-        's' | '5' => matches!(ch2, 's' | '5'),
-        'z' | '2' => matches!(ch2, 'z' | '2'),
-        _ => false,
+    canonical_char(ch1) == canonical_char(ch2)
+}
+
+fn canonical_char(ch: char) -> char {
+    match ch.to_ascii_lowercase() {
+        '1' | '|' | '¡' | 'i' | 'l' => 'l',
+        '0' | 'o' => 'o',
+        '5' | 's' => 's',
+        '2' | 'z' => 'z',
+        '4' | 'a' => 'a',
+        '3' | 'e' => 'e',
+        '6' | '8' | 'b' => 'b',
+        '7' | 't' => 't',
+        '9' | 'g' => 'g',
+        other => other,
     }
 }
 
 pub fn subsequence_match(query: &str, candidate: &str) -> Option<MatchDetail> {
     let query = query.trim().to_lowercase();
     let candidate = candidate.to_lowercase();
-    
+
     if query.is_empty() || candidate.is_empty() {
         return None;
     }
-    
+
     if query.len() > candidate.len() {
         return None;
     }
@@ -60,27 +66,27 @@ pub fn subsequence_match(query: &str, candidate: &str) -> Option<MatchDetail> {
 
     for i in 1..m {
         for j in i..n {
-             if !chars_match(query_chars[i], target_chars[j]) {
+            if !chars_match(query_chars[i], target_chars[j]) {
                 continue;
             }
-            
+
             let mut best_score = f64::NEG_INFINITY;
             let mut best_prev = -1;
-            
+
             // Try to extend from any valid previous position k < j
             for k in 0..j {
-                let prev_score = dp[i-1][k];
+                let prev_score = dp[i - 1][k];
                 if prev_score == f64::NEG_INFINITY {
                     continue;
                 }
-                
+
                 let current_score = prev_score + score_position(&original_chars, j, Some(k));
                 if current_score > best_score {
                     best_score = current_score;
                     best_prev = k as i32;
                 }
             }
-            
+
             dp[i][j] = best_score;
             backtrack[i][j] = best_prev;
         }
@@ -89,9 +95,9 @@ pub fn subsequence_match(query: &str, candidate: &str) -> Option<MatchDetail> {
     // Find best end position
     let mut best_final_score = f64::NEG_INFINITY;
     let mut best_final_idx = -1;
-    
+
     for j in 0..n {
-        let s = dp[m-1][j];
+        let s = dp[m - 1][j];
         if s > best_final_score {
             best_final_score = s;
             best_final_idx = j as i32;
@@ -105,7 +111,7 @@ pub fn subsequence_match(query: &str, candidate: &str) -> Option<MatchDetail> {
     // Backtrack to find positions
     let mut positions = vec![0; m];
     let mut curr_idx = best_final_idx as usize;
-    
+
     for i in (0..m).rev() {
         positions[i] = curr_idx;
         if i > 0 {
@@ -125,7 +131,7 @@ pub fn subsequence_match(query: &str, candidate: &str) -> Option<MatchDetail> {
 
 fn score_position(text: &[char], idx: usize, prev_idx: Option<usize>) -> f64 {
     let mut score = BASE_SCORE;
-    
+
     if is_word_start(text, idx) {
         score += WORD_START_BONUS;
     }
@@ -146,7 +152,7 @@ fn score_position(text: &[char], idx: usize, prev_idx: Option<usize>) -> f64 {
             }
         }
     }
-    
+
     score
 }
 
@@ -163,4 +169,23 @@ fn is_word_start(text: &[char], idx: usize) -> bool {
         return true;
     }
     false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::subsequence_match;
+
+    #[test]
+    fn matches_common_ocr_digit_confusions_in_query() {
+        let result = subsequence_match("c4s0s", "casos-aiagsum");
+
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn returns_character_positions_for_highlighting() {
+        let result = subsequence_match("ca-ai", "casos-aiagsum").expect("query should match");
+
+        assert_eq!(result.positions, vec![0, 1, 5, 6, 7]);
+    }
 }

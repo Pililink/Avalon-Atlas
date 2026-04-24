@@ -1,7 +1,7 @@
 {
     "productName": "avalon-atlas",
     "version": "2.0.0",
-    "identifier": "com.avalon-atlas.app",
+    "identifier": "com.avalon-atlas.desktop",
     "build": {
         "beforeDevCommand": "npm run dev",
         "beforeBuildCommand": "npm run build",
@@ -18,12 +18,17 @@
             }
         ],
         "security": {
-            "csp": "default-src 'self'; img-src 'self' asset: https://asset.localhost"
+            "csp": "default-src 'self'; img-src 'self' data: asset: https://asset.localhost"
         }
     },
     "bundle": {
         "active": true,
         "targets": "all",
+        "resources": {
+            "../public/static/data/maps.json": "static/data/maps.json",
+            "binaries/tesseract/": "binaries/tesseract/",
+            "binaries/tessdata/": "binaries/tessdata/"
+        },
         "icon": [
             "icons/32x32.png",
             "icons/128x128.png",

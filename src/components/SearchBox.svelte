@@ -3,6 +3,7 @@
   import type { SearchResult } from "../lib/types";
   import { createEventDispatcher } from "svelte";
   import MapListItem from "./MapListItem.svelte";
+  import { t } from "../lib/i18n";
 
   const dispatch = createEventDispatcher();
 
@@ -33,7 +34,7 @@
 
   export async function handleCapture() {
     loading = true;
-    query = "正在识别...";
+    query = $t("search.recognizing");
     showDropdown = false;
     try {
       const res = await invoke("capture_and_search") as SearchResult[];
@@ -46,12 +47,12 @@
         results = res;
         showDropdown = true;
       } else {
-        query = "无匹配结果";
+        query = $t("search.noMatches");
         results = [];
       }
     } catch (e) {
       console.error("OCR failed:", e);
-      query = `识别失败: ${e}`;
+      query = $t("search.failed", { error: String(e) });
     } finally {
       loading = false;
     }
@@ -76,10 +77,10 @@
 
 <div class="search-bar" bind:this={searchContainer}>
   <div class="input-wrapper">
-    <span class="search-icon">🔍</span>
+    <span class="search-icon" class:loading aria-hidden="true">⌕</span>
     <input
       type="text"
-      placeholder="输入地图名称..."
+      placeholder={$t("search.placeholder")}
       bind:value={query}
       on:input={handleInput}
       on:focus={() => { if (results.length > 0) showDropdown = true; }}
@@ -89,6 +90,7 @@
     <!-- Dropdown -->
     {#if showDropdown && results.length > 0}
         <div class="dropdown">
+            <div class="dropdown-meta">{$t("search.matches")}</div>
             {#each results as result}
                 <!-- svelte-ignore a11y-click-events-have-key-events -->
                 <!-- svelte-ignore a11y-no-static-element-interactions -->
@@ -108,7 +110,7 @@
     width: 100%;
     align-items: center;
     position: relative; 
-    z-index: 100; /* Ensure dropdown is on top */
+    z-index: 100;
   }
 
   .input-wrapper {
@@ -120,51 +122,89 @@
 
   .search-icon {
     position: absolute;
-    left: 12px;
-    font-size: 1.2rem;
+    left: 11px;
+    width: 18px;
+    height: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--accent);
+    font-size: 1rem;
+    font-weight: 800;
     pointer-events: none;
     z-index: 1;
-    opacity: 0.5; /* more subtle */
+    opacity: 0.9;
+  }
+
+  .search-icon.loading {
+    animation: pulse 0.8s ease-in-out infinite alternate;
   }
 
   .search-input {
     width: 100%;
-    padding: 0 12px 0 42px;
-    height: 48px; 
-    font-size: 1.1rem;
-    border-radius: 6px;
-    border: none; /* Cleaner look */
-    background: rgba(255, 255, 255, 0.05); /* Very subtle bg */
+    padding: 0 10px 0 36px;
+    height: 36px;
+    font-size: 0.94rem;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: linear-gradient(180deg, rgba(0, 0, 0, 0.22), rgba(0, 0, 0, 0.04)), var(--bg-inset);
     color: var(--text-primary);
     transition: all 0.2s;
+    box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.55), var(--panel-edge);
   }
 
   .search-input:focus {
     outline: none;
-    background: rgba(255, 255, 255, 0.1);
-    box-shadow: 0 0 0 1px var(--accent);
+    border-color: var(--accent);
+    background: var(--bg-primary);
+    box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(201, 154, 69, 0.28);
+  }
+
+  .search-input::placeholder {
+    color: var(--text-tertiary);
   }
 
   .dropdown {
       position: absolute;
-      top: 100%;
+      top: calc(100% + 5px);
       left: 0;
-      width: 100%;
-      background: var(--bg-secondary);
-      border: 1px solid var(--border);
-      border-radius: 0 0 6px 6px;
-      margin-top: 4px;
-      max-height: 400px;
+      width: calc(100vw - 16px);
+      background: var(--bg-panel);
+      border: 1px solid var(--border-bright);
+      border-radius: 4px;
+      max-height: min(390px, calc(100vh - 126px));
       overflow-y: auto;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+      box-shadow: var(--panel-edge), 0 12px 28px rgba(0,0,0,0.56);
+      z-index: 20;
+  }
+
+  .dropdown-meta {
+      padding: 5px 8px 4px;
+      color: var(--text-tertiary);
+      font-size: 0.68rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      border-bottom: 1px solid var(--border-muted);
+      background: var(--bg-secondary);
   }
   
   .dropdown-item {
-      padding: 0;
+      padding: 4px;
       cursor: pointer;
   }
   
   .dropdown-item:hover {
-      background-color: var(--bg-tertiary);
+      background-color: rgba(201, 154, 69, 0.1);
+  }
+
+  @keyframes pulse {
+    from {
+      opacity: 0.45;
+      transform: scale(0.94);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
   }
 </style>

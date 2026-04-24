@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { createEventDispatcher, onMount } from "svelte";
-  import { invoke } from "@tauri-apps/api/core";
+  import { createEventDispatcher } from "svelte";
+  import { locales, setLocale, t, type Locale } from "../lib/i18n";
 
   const dispatch = createEventDispatcher();
 
@@ -10,10 +10,11 @@
     regionHotkey: "ctrl+shift+w",
     ocrDebug: true,
     ocrRegion: {
-      width: 600,
-      height: 80,
-      verticalOffset: 0
-    }
+      width: 590,
+      height: 30,
+      verticalOffset: 50
+    },
+    language: "zh-CN"
   };
 
   interface AppConfig {
@@ -25,35 +26,41 @@
       height: number;
       verticalOffset: number;
     };
+    language: Locale;
   }
 
   let recordingKey: "mouse" | "region" | null = null;
   let tempMouseHotkey = config.mouseHotkey;
   let tempRegionHotkey = config.regionHotkey;
   let tempOcrDebug = config.ocrDebug;
+  let tempLanguage: Locale = config.language;
 
   $: if (show) {
     tempMouseHotkey = config.mouseHotkey;
     tempRegionHotkey = config.regionHotkey;
     tempOcrDebug = config.ocrDebug;
+    tempLanguage = config.language;
   }
 
-  function close() {
+  function close(revertLanguage = true) {
     recordingKey = null;
+    if (revertLanguage) {
+      setLocale(config.language);
+    }
     dispatch("close");
   }
 
   function save() {
     if (!tempMouseHotkey.trim()) {
-      alert("鼠标 OCR 热键不能为空");
+      alert($t("settings.errorMouseHotkeyRequired"));
       return;
     }
     if (!tempRegionHotkey.trim()) {
-      alert("框选 OCR 热键不能为空");
+      alert($t("settings.errorRegionHotkeyRequired"));
       return;
     }
     if (tempMouseHotkey === tempRegionHotkey) {
-      alert("两个热键不能相同");
+      alert($t("settings.errorHotkeyConflict"));
       return;
     }
 
@@ -61,15 +68,21 @@
       ...config,
       mouseHotkey: tempMouseHotkey,
       regionHotkey: tempRegionHotkey,
-      ocrDebug: tempOcrDebug
+      ocrDebug: tempOcrDebug,
+      language: tempLanguage
     };
 
     dispatch("save", newConfig);
-    close();
+    close(false);
   }
 
   function startRecording(type: "mouse" | "region") {
     recordingKey = type;
+  }
+
+  function handleLanguageChange(event: Event) {
+    tempLanguage = (event.currentTarget as HTMLSelectElement).value as Locale;
+    setLocale(tempLanguage);
   }
 
   function handleKeydown(event: KeyboardEvent) {
@@ -82,7 +95,7 @@
     if (event.ctrlKey) modifiers.push("ctrl");
     if (event.altKey) modifiers.push("alt");
     if (event.shiftKey) modifiers.push("shift");
-    if (event.metaKey) modifiers.push("win");
+    if (event.metaKey) modifiers.push("super");
 
     let key = event.key.toLowerCase();
     
@@ -125,22 +138,22 @@
   <div class="modal-backdrop" on:click={handleBackdropClick}>
     <div class="modal-content">
       <header>
-        <h2>设置</h2>
-        <button class="close-btn" on:click={close}>×</button>
+        <h2>{$t("settings.title")}</h2>
+        <button class="close-btn" on:click={() => close()}>×</button>
       </header>
 
       <div class="settings-body">
         <!-- Hotkey Settings -->
         <section class="settings-group">
-          <h3>热键设置</h3>
-          
+          <h3>{$t("settings.hotkeys")}</h3>
+
           <div class="setting-row">
-            <span class="setting-label">鼠标 OCR 热键:</span>
+            <span class="setting-label">{$t("settings.mouseHotkey")}</span>
             <div class="hotkey-input-group">
               <input 
                 type="text" 
                 readonly
-                value={recordingKey === "mouse" ? "请按下组合键..." : tempMouseHotkey}
+                value={recordingKey === "mouse" ? $t("settings.pressCombo") : tempMouseHotkey}
                 class="hotkey-input"
                 class:recording={recordingKey === "mouse"}
               />
@@ -150,19 +163,19 @@
                 on:click={() => startRecording("mouse")}
                 disabled={recordingKey !== null}
               >
-                {recordingKey === "mouse" ? "录制中..." : "录制"}
+                {recordingKey === "mouse" ? $t("settings.recording") : $t("settings.record")}
               </button>
             </div>
-            <span class="help-text">触发鼠标位置上方的 OCR 识别</span>
+            <span class="help-text">{$t("settings.mouseHotkeyHelp")}</span>
           </div>
 
           <div class="setting-row">
-            <span class="setting-label">框选 OCR 热键:</span>
+            <span class="setting-label">{$t("settings.regionHotkey")}</span>
             <div class="hotkey-input-group">
               <input 
                 type="text" 
                 readonly
-                value={recordingKey === "region" ? "请按下组合键..." : tempRegionHotkey}
+                value={recordingKey === "region" ? $t("settings.pressCombo") : tempRegionHotkey}
                 class="hotkey-input"
                 class:recording={recordingKey === "region"}
               />
@@ -172,30 +185,39 @@
                 on:click={() => startRecording("region")}
                 disabled={recordingKey !== null}
               >
-                {recordingKey === "region" ? "录制中..." : "录制"}
+                {recordingKey === "region" ? $t("settings.recording") : $t("settings.record")}
               </button>
             </div>
-            <span class="help-text">拖动选择屏幕区域进行 OCR 识别</span>
+            <span class="help-text">{$t("settings.regionHotkeyHelp")}</span>
           </div>
         </section>
 
         <!-- Other Settings -->
         <section class="settings-group">
-          <h3>其他设置</h3>
+          <h3>{$t("settings.other")}</h3>
+
+          <div class="setting-row">
+            <span class="setting-label">{$t("settings.language")}</span>
+            <select class="language-select" bind:value={tempLanguage} on:change={handleLanguageChange}>
+              {#each locales as localeCode}
+                <option value={localeCode}>{$t(`locale.${localeCode}`)}</option>
+              {/each}
+            </select>
+          </div>
           
           <div class="setting-row checkbox-row">
             <label class="checkbox-label">
               <input type="checkbox" bind:checked={tempOcrDebug} />
-              <span>启用 OCR 调试模式</span>
+              <span>{$t("settings.debugOcr")}</span>
             </label>
-            <span class="help-text">保存 OCR 截图到 debug 目录</span>
+            <span class="help-text">{$t("settings.debugOcrHelp")}</span>
           </div>
         </section>
       </div>
 
       <footer>
-        <button class="btn btn-secondary" on:click={close}>取消</button>
-        <button class="btn btn-primary" on:click={save}>保存</button>
+        <button class="btn btn-secondary" on:click={() => close()}>{$t("settings.cancel")}</button>
+        <button class="btn btn-primary" on:click={save}>{$t("settings.save")}</button>
       </footer>
     </div>
   </div>
@@ -208,7 +230,7 @@
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0, 0, 0, 0.7);
+    background: rgba(8, 6, 4, 0.72);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -216,29 +238,32 @@
   }
 
   .modal-content {
-    background: var(--bg-secondary);
-    border-radius: 12px;
+    background:
+      linear-gradient(180deg, rgba(201, 154, 69, 0.12), transparent 72px),
+      var(--bg-panel);
+    border-radius: 5px;
     width: 500px;
     max-width: 90vw;
     max-height: 80vh;
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-    border: 1px solid var(--border);
+    box-shadow: var(--panel-edge), 0 18px 42px rgba(0, 0, 0, 0.62);
+    border: 1px solid var(--border-bright);
   }
 
   header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 16px 20px;
+    padding: 12px 14px;
     border-bottom: 1px solid var(--border);
+    background: var(--bg-secondary);
   }
 
   header h2 {
     margin: 0;
-    font-size: 1.2rem;
+    font-size: 1rem;
     color: var(--text-primary);
   }
 
@@ -249,8 +274,8 @@
     color: var(--text-secondary);
     cursor: pointer;
     padding: 0;
-    width: 32px;
-    height: 32px;
+    width: 28px;
+    height: 28px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -264,13 +289,13 @@
   }
 
   .settings-body {
-    padding: 20px;
+    padding: 14px;
     overflow-y: auto;
     flex: 1;
   }
 
   .settings-group {
-    margin-bottom: 24px;
+    margin-bottom: 16px;
   }
 
   .settings-group:last-child {
@@ -278,15 +303,16 @@
   }
 
   .settings-group h3 {
-    font-size: 1rem;
+    font-size: 0.82rem;
     color: var(--text-primary);
-    margin: 0 0 16px 0;
-    padding-bottom: 8px;
+    margin: 0 0 10px 0;
+    padding-bottom: 6px;
     border-bottom: 1px solid var(--border);
+    text-transform: uppercase;
   }
 
   .setting-row {
-    margin-bottom: 16px;
+    margin-bottom: 12px;
   }
 
   .setting-row label {
@@ -303,29 +329,51 @@
 
   .hotkey-input {
     flex: 1;
-    padding: 8px 12px;
-    background: var(--bg-tertiary);
+    height: 34px;
+    padding: 0 10px;
+    background: var(--bg-inset);
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: 4px;
     color: var(--text-primary);
     font-family: monospace;
-    font-size: 0.95rem;
+    font-size: 0.86rem;
+    box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.45);
+  }
+
+  .language-select {
+    width: 100%;
+    height: 36px;
+    padding: 0 10px;
+    background: var(--bg-inset);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text-primary);
+    font-size: 0.92rem;
+    box-shadow: var(--panel-edge);
+  }
+
+  .language-select:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px rgba(201, 154, 69, 0.28);
   }
 
   .hotkey-input.recording {
     border-color: var(--accent);
-    background: var(--accent-muted);
+    background: var(--bg-primary);
   }
 
   .record-btn {
-    padding: 8px 16px;
-    background: var(--bg-tertiary);
+    height: 34px;
+    padding: 0 12px;
+    background: linear-gradient(180deg, var(--bg-elevated), var(--bg-tertiary));
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: 4px;
     color: var(--text-primary);
     cursor: pointer;
     transition: all 0.2s;
     white-space: nowrap;
+    box-shadow: var(--panel-edge);
   }
 
   .record-btn:hover:not(:disabled) {
@@ -336,7 +384,8 @@
   .record-btn.recording {
     background: var(--accent);
     border-color: var(--accent);
-    color: white;
+    color: var(--text-dark);
+    font-weight: 800;
   }
 
   .record-btn:disabled {
@@ -364,8 +413,8 @@
   }
 
   .checkbox-label input[type="checkbox"] {
-    width: 18px;
-    height: 18px;
+    width: 16px;
+    height: 16px;
     accent-color: var(--accent);
   }
 
@@ -377,20 +426,24 @@
     display: flex;
     justify-content: flex-end;
     gap: 12px;
-    padding: 16px 20px;
+    padding: 10px 14px;
     border-top: 1px solid var(--border);
+    background: var(--bg-secondary);
   }
 
   .btn {
-    padding: 10px 20px;
-    border-radius: 6px;
-    font-size: 0.95rem;
+    min-width: 76px;
+    height: 34px;
+    padding: 0 14px;
+    border-radius: 4px;
+    font-size: 0.88rem;
     cursor: pointer;
     transition: all 0.2s;
+    box-shadow: var(--panel-edge);
   }
 
   .btn-secondary {
-    background: var(--bg-tertiary);
+    background: linear-gradient(180deg, var(--bg-elevated), var(--bg-tertiary));
     border: 1px solid var(--border);
     color: var(--text-primary);
   }
@@ -400,9 +453,10 @@
   }
 
   .btn-primary {
-    background: var(--accent);
+    background: linear-gradient(180deg, var(--accent-hover), var(--accent));
     border: 1px solid var(--accent);
-    color: white;
+    color: var(--text-dark);
+    font-weight: 800;
   }
 
   .btn-primary:hover {

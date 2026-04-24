@@ -1,2 +1,2 @@
-pub mod map;
 pub mod config;
+pub mod map;
