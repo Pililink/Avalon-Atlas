@@ -59,13 +59,17 @@ Type part of a map name in the search box, then select a result from the list. S
 
 Default hotkey: `Ctrl+Shift+Q`
 
-Move the cursor near the target map name in the game, then press the hotkey. Avalon Atlas captures a small region around the cursor, runs OCR, and selects the best matching known map name only when the match is confident.
+Move the cursor over a map icon in the game and wait for the map name tooltip to appear. Press the hotkey while the tooltip is visible. Avalon Atlas captures a small region near the cursor, runs OCR on the tooltip text, and selects the matching known map only when the result is confident.
+
+中文说明：把鼠标移动到游戏里的地图图标上，等地图名称提示框弹出后按下热键。工具会截取鼠标附近的一小块区域，尝试识别提示框里的地图名；如果没有可靠结果，就不会乱选地图。
 
 ### Region OCR
 
 Default hotkey: `Ctrl+Shift+W`
 
-Press the hotkey, drag over the screen area that contains map names, and release. The app recognizes text in the selected area and adds matching maps to the list.
+Press the hotkey, drag over any screen area that contains map names, and release. The app recognizes text in the selected area and adds matching maps to the list.
+
+中文说明：按下热键后拖拽选择包含地图名的区域，例如聊天记录、截图、网页或游戏内文本区域。松开鼠标后，工具会识别框选范围内的文字，并尝试匹配其中出现的地图名，适合一次性处理多个地图名。
 
 ### Settings
 
