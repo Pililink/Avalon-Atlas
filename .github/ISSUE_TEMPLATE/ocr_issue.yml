@@ -1,0 +1,46 @@
+name: OCR issue
+description: Report incorrect or failed OCR recognition.
+title: "[OCR]: "
+labels: ["ocr", "bug"]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Avalon Atlas version
+      placeholder: v2.0.0
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: OCR mode
+      options:
+        - Mouse OCR
+        - Region OCR
+        - Both
+    validations:
+      required: true
+  - type: textarea
+    id: map_names
+    attributes:
+      label: Expected map name(s)
+      description: Which map names should have been detected?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual result
+      description: What did Avalon Atlas detect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: debug
+    attributes:
+      label: Debug files or screenshots
+      description: Attach OCR debug images when possible. Avoid sharing private information.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      render: text

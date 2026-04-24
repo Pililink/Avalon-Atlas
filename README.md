@@ -1,8 +1,16 @@
 # Avalon Atlas
 
+[![Release](https://img.shields.io/github/v/release/Pililink/Avalon-Atlas?label=release)](https://github.com/Pililink/Avalon-Atlas/releases)
+[![Release Build](https://github.com/Pililink/Avalon-Atlas/actions/workflows/release.yml/badge.svg)](https://github.com/Pililink/Avalon-Atlas/actions/workflows/release.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Tauri](https://img.shields.io/badge/Tauri-v2-24C8DB)](https://tauri.app/)
+[![Svelte](https://img.shields.io/badge/Svelte-5-FF3E00)](https://svelte.dev/)
+
 Avalon Atlas is a compact Windows desktop assistant for looking up Albion Online Avalon road maps. It is designed to sit beside the game window, provide fast map search, and use OCR hotkeys to capture map names from the screen.
 
 The current application is built with Tauri v2, Svelte 5, TypeScript, and Rust.
+
+> Unofficial community tool for Albion Online. Avalon Atlas does not require game account credentials and OCR runs locally.
 
 ## Features
 
@@ -197,7 +205,9 @@ Supported languages are `zh-CN` and `en-US`.
 
 ## Contributing
 
-Issues and pull requests are welcome. For code changes, keep the scope focused and run the relevant checks before submitting:
+Issues and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
+
+For code changes, keep the scope focused and run the relevant checks before submitting:
 
 ```bash
 npm run check
