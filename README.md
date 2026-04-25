@@ -1,42 +1,44 @@
 # Avalon Atlas
 
+[English](README.en.md)
+
 [![Release](https://img.shields.io/github/v/release/Pililink/Avalon-Atlas?label=release)](https://github.com/Pililink/Avalon-Atlas/releases)
 [![Release Build](https://github.com/Pililink/Avalon-Atlas/actions/workflows/release.yml/badge.svg)](https://github.com/Pililink/Avalon-Atlas/actions/workflows/release.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Tauri](https://img.shields.io/badge/Tauri-v2-24C8DB)](https://tauri.app/)
 [![Svelte](https://img.shields.io/badge/Svelte-5-FF3E00)](https://svelte.dev/)
 
-Avalon Atlas is a compact Windows desktop assistant for looking up Albion Online Avalon road maps. It is designed to sit beside the game window, provide fast map search, and use OCR hotkeys to capture map names from the screen.
+Avalon Atlas 是一个轻量的 Windows 桌面助手，用于查询 Albion Online 阿瓦隆道路地图。它适合放在游戏窗口旁边，提供快速地图搜索，并支持通过 OCR 热键从屏幕上读取地图名称。
 
-The current application is built with Tauri v2, Svelte 5, TypeScript, and Rust.
+当前应用基于 Tauri v2、Svelte 5、TypeScript 和 Rust 构建。
 
-> Unofficial community tool for Albion Online. Avalon Atlas does not require game account credentials and OCR runs locally.
+> 这是 Albion Online 的非官方社区工具。Avalon Atlas 不需要游戏账号凭据，OCR 识别在本地运行。
 
-## Screenshot
+## 截图
 
 ![Avalon Atlas compact in-game assistant panel](docs/assets/avalon-atlas-panel.png)
 
-## Features
+## 功能
 
-- Fast fuzzy search for Avalon map names, including typo-tolerant and subsequence matching.
-- Compact in-game assistant style UI with selected-map list and map preview.
-- Map details for tier, route type, chests, dungeons, resources, and Brecilien access.
-- Mouse OCR hotkey for reading the map name near the cursor.
-- Region OCR hotkey for selecting an on-screen area and detecting multiple map names.
-- Customizable global hotkeys.
-- Always-on-top window mode.
-- Chinese and English UI.
-- Portable Windows release with bundled Tesseract OCR runtime.
+- 快速模糊搜索阿瓦隆地图名称，支持容错和子序列匹配。
+- 紧凑的游戏内助手风格界面，包含已选地图列表和地图预览。
+- 展示地图等级、路线类型、宝箱、地下城、资源和布雷西林入口信息。
+- 鼠标 OCR 热键：读取鼠标附近的地图名称。
+- 区域 OCR 热键：框选屏幕区域并识别多个地图名称。
+- 可自定义全局热键。
+- 窗口置顶模式。
+- 中文和英文界面。
+- Windows 便携版内置 Tesseract OCR 运行时。
 
-## Download
+## 下载
 
-Download the latest Windows portable package from GitHub Releases:
+从 GitHub Releases 下载最新 Windows 便携包：
 
 https://github.com/Pililink/Avalon-Atlas/releases
 
-Use the `avalon-atlas-v<version>-portable.zip` asset. Extract it and run `avalon-atlas.exe`.
+下载 `avalon-atlas-v<version>-portable.zip`，解压后运行 `avalon-atlas.exe`。
 
-The portable package contains:
+便携包包含：
 
 ```text
 avalon-atlas.exe
@@ -47,153 +49,151 @@ logs/
 README.txt
 ```
 
-Logs are written to the `logs/` directory next to the executable.
+日志会写入可执行文件旁边的 `logs/` 目录。
 
-## Usage
+## 使用
 
-### Search
+### 搜索
 
-Type part of a map name in the search box, then select a result from the list. Selected maps remain visible for quick comparison, and hovering a selected map shows its preview image.
+在搜索框输入地图名称的一部分，然后从结果列表中选择地图。已选地图会保留在列表中，便于快速对比；鼠标悬停在已选地图上时会显示预览图。
 
-### Mouse OCR
+### 鼠标 OCR
 
-Default hotkey: `Ctrl+Shift+Q`
+默认热键：`Ctrl+Shift+Q`
 
-Move the cursor over a map icon in the game and wait for the map name tooltip to appear. Press the hotkey while the tooltip is visible. Avalon Atlas captures a small region near the cursor, runs OCR on the tooltip text, and selects the matching known map only when the result is confident.
+把鼠标移动到游戏里的地图图标上，等地图名称提示框弹出后按下热键。Avalon Atlas 会截取鼠标附近的一小块区域，识别提示框中的文本，并且只在结果足够可信时选择匹配的已知地图。
 
-中文说明：把鼠标移动到游戏里的地图图标上，等地图名称提示框弹出后按下热键。工具会截取鼠标附近的一小块区域，尝试识别提示框里的地图名；如果没有可靠结果，就不会乱选地图。
+### 区域 OCR
 
-### Region OCR
+默认热键：`Ctrl+Shift+W`
 
-Default hotkey: `Ctrl+Shift+W`
+按下热键后，拖拽选择包含地图名称的屏幕区域，然后松开鼠标。应用会识别选区内的文本，并把匹配到的地图加入列表。
 
-Press the hotkey, drag over any screen area that contains map names, and release. The app recognizes text in the selected area and adds matching maps to the list.
+适用场景包括聊天记录、截图、网页或游戏内文本区域，适合一次处理多个地图名。
 
-中文说明：按下热键后拖拽选择包含地图名的区域，例如聊天记录、截图、网页或游戏内文本区域。松开鼠标后，工具会识别框选范围内的文字，并尝试匹配其中出现的地图名，适合一次性处理多个地图名。
+### 设置
 
-### Settings
+从应用工具栏打开设置，可修改：
 
-Open settings from the app toolbar to change:
+- 鼠标 OCR 热键
+- 区域 OCR 热键
+- 界面语言
+- OCR 调试图片保存
 
-- Mouse OCR hotkey
-- Region OCR hotkey
-- UI language
-- OCR debug image saving
+设置会保存到 `config.json`。
 
-Settings are saved to `config.json`.
+## 开发
 
-## Development
+### 环境要求
 
-### Requirements
+- Windows 10/11 64 位
+- Node.js 22 或更新版本
+- Rust stable 工具链
+- 用于 Tauri 构建的 Microsoft C++ Build Tools / Windows SDK
 
-- Windows 10/11 64-bit
-- Node.js 22 or newer
-- Rust stable toolchain
-- Microsoft C++ Build Tools / Windows SDK for Tauri builds
-
-### Install
+### 安装依赖
 
 ```bash
 npm install
 ```
 
-### Run Desktop App
+### 运行桌面应用
 
 ```bash
 npm run tauri dev
 ```
 
-Tauri starts the Vite dev server on `http://localhost:1420`.
+Tauri 会在 `http://localhost:1420` 启动 Vite 开发服务器。
 
-### Run Frontend Only
+### 仅运行前端
 
 ```bash
 npm run dev
 ```
 
-Frontend-only mode is useful for UI work. Tauri IPC, OCR, global hotkeys, and always-on-top behavior require `npm run tauri dev`.
+仅前端模式适合 UI 开发。Tauri IPC、OCR、全局热键和窗口置顶行为需要通过 `npm run tauri dev` 测试。
 
-### Check
+### 检查
 
 ```bash
 npm run check
 cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
-### Build
+### 构建
 
-Build the Tauri app without generating installers:
+构建 Tauri 应用但不生成安装包：
 
 ```bash
 npm run tauri build -- --no-bundle
 ```
 
-Main build outputs:
+主要构建产物：
 
 ```text
 build/frontend/
 build/target/release/avalon-atlas.exe
 ```
 
-Create the portable distribution directory and zip:
+创建便携版目录和压缩包：
 
 ```bash
 npm run package:portable
 ```
 
-Portable outputs:
+便携版输出：
 
 ```text
 build/portable/avalon-atlas-v<version>-portable/
 build/portable/avalon-atlas-v<version>-portable.zip
 ```
 
-## Release
+## 发布
 
-GitHub Actions builds and publishes Windows portable releases when a `v*` tag is pushed.
+推送 `v*` 标签时，GitHub Actions 会构建并发布 Windows 便携版。
 
 ```bash
 git tag v2.0.1
 git push origin v2.0.1
 ```
 
-The tag version must match:
+标签版本必须和以下文件一致：
 
 - `package.json`
 - `src-tauri/tauri.conf.json`
 - `src-tauri/Cargo.toml`
 
-The release workflow runs dependency installation, frontend checks, portable packaging, package verification, and uploads the zip to GitHub Releases.
+发布工作流会安装依赖、运行前端检查、打包便携版、验证包内容，并把 zip 上传到 GitHub Releases。
 
-## Project Structure
+## 项目结构
 
 ```text
 Avalon-Atlas/
-├── .github/workflows/      # CI and release workflows
-├── docs/                   # Design and maintenance notes
-├── public/static/          # Map data, previews, and UI assets
-├── scripts/                # Portable packaging scripts
-├── src/                    # Svelte frontend
-├── src-tauri/              # Rust/Tauri backend
+├── .github/workflows/      # CI 和发布工作流
+├── docs/                   # 设计和维护说明
+├── public/static/          # 地图数据、预览图和 UI 资源
+├── scripts/                # 便携版打包脚本
+├── src/                    # Svelte 前端
+├── src-tauri/              # Rust/Tauri 后端
 ├── index.html
 ├── package.json
 └── vite.config.ts
 ```
 
-Important paths:
+重要路径：
 
-- `public/static/data/maps.json`: map metadata.
-- `public/static/maps/`: map preview images.
-- `src/lib/i18n/`: Chinese and English UI strings.
-- `src-tauri/binaries/tesseract/`: bundled Tesseract runtime.
-- `src-tauri/binaries/tessdata/`: bundled OCR language data.
-- `src-tauri/src/services/`: search, OCR, hotkey, and supporting services.
+- `public/static/data/maps.json`：地图元数据。
+- `public/static/maps/`：地图预览图。
+- `src/lib/i18n/`：中文和英文界面文案。
+- `src-tauri/binaries/tesseract/`：内置 Tesseract 运行时。
+- `src-tauri/binaries/tessdata/`：内置 OCR 语言数据。
+- `src-tauri/src/services/`：搜索、OCR、热键和辅助服务。
 
-More maintenance notes are available in [docs/](docs/README.md).
+更多维护说明见 [docs/](docs/README.md)。
 
-## Configuration
+## 配置
 
-`config.json` is created automatically when missing. The default configuration is:
+缺少 `config.json` 时应用会自动创建。默认配置为：
 
 ```json
 {
@@ -211,31 +211,31 @@ More maintenance notes are available in [docs/](docs/README.md).
 }
 ```
 
-Supported languages are `zh-CN` and `en-US`.
+支持的语言为 `zh-CN` 和 `en-US`。
 
-## Contributing
+## 贡献
 
-Issues and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
+欢迎提交 issue 和 pull request。提交前请先阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
-For code changes, keep the scope focused and run the relevant checks before submitting:
+代码变更请保持范围聚焦，并在提交前运行相关检查：
 
 ```bash
 npm run check
 cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
-For release or packaging changes, also verify:
+发布或打包相关变更还需要验证：
 
 ```bash
 npm run package:portable
 ```
 
-## Disclaimer
+## 免责声明
 
-Avalon Atlas is an unofficial community tool. It is not affiliated with, endorsed by, or sponsored by Sandbox Interactive or Albion Online.
+Avalon Atlas 是非官方社区工具，不隶属于 Sandbox Interactive 或 Albion Online，也未获得其认可或赞助。
 
-Use OCR and global hotkeys responsibly and follow the rules of the software and game environment where you run it.
+请负责任地使用 OCR 和全局热键，并遵守运行环境、软件和游戏的相关规则。
 
-## License
+## 许可证
 
-This project is licensed under the MIT License. See [LICENSE](LICENSE).
+本项目采用 MIT 许可证。详见 [LICENSE](LICENSE)。
