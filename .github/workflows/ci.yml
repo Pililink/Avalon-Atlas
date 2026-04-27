@@ -1,0 +1,131 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - develop/*
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  NODE_VERSION: "24"
+
+jobs:
+  frontend-check:
+    name: Frontend Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check Svelte and TypeScript
+        run: npm run check
+
+  rust-test:
+    name: Rust Test
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            build/target
+          key: windows-rust-test-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            windows-rust-test-cargo-
+            windows-cargo-
+
+      - name: Test Rust backend
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
+  package-smoke:
+    name: Windows Portable Smoke
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            build/target
+          key: windows-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            windows-cargo-
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build portable package
+        shell: pwsh
+        run: npm run package:portable
+
+      - name: Verify portable package
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $packageDir = "build/portable/avalon-atlas-v$version-portable"
+          $zipPath = "build/portable/avalon-atlas-v$version-portable.zip"
+
+          $requiredPaths = @(
+            "$packageDir/avalon-atlas.exe",
+            "$packageDir/config.json",
+            "$packageDir/static/data/maps.json",
+            "$packageDir/static/maps",
+            "$packageDir/static/assets",
+            "$packageDir/binaries/tesseract",
+            "$packageDir/binaries/tessdata/eng.traineddata",
+            "$packageDir/logs",
+            "$zipPath"
+          )
+
+          foreach ($path in $requiredPaths) {
+            if (-not (Test-Path $path)) {
+              Write-Error "Missing portable package file: $path"
+              exit 1
+            }
+          }
+
+          $mapCount = (Get-ChildItem "$packageDir/static/maps" -Filter *.webp).Count
+          if ($mapCount -lt 400) {
+            Write-Error "Expected at least 400 map webp files, found $mapCount"
+            exit 1
+          }
+
+          $zipSizeMb = [math]::Round((Get-Item $zipPath).Length / 1MB, 2)
+          Write-Host "Portable zip: $zipPath ($zipSizeMb MB)"
+          Write-Host "Map webp files: $mapCount"

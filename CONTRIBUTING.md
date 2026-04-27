@@ -51,6 +51,25 @@ For packaging or release changes, also run:
 npm run package:portable
 ```
 
+## Commit Convention
+
+Prefer a short, focused title with either gitmoji or the existing conventional prefix style.
+
+Recommended gitmoji prefixes:
+
+- `✨` Feature
+- `🐛` Bug fix
+- `♻️` Refactor
+- `🎨` UI or styling
+- `⚡️` Performance
+- `🔒` Security
+- `🔧` Tooling, config, or CI
+- `✅` Tests
+- `📄` Documentation
+- `🚀` Release
+
+Existing titles such as `feat: ...`, `fix: ...`, `docs: ...`, and `chore: ...` are also acceptable. Keep each commit scoped to one logical change and avoid committing generated build output.
+
 ## Pull Request Guidelines
 
 - Explain what changed and why.
@@ -58,6 +77,8 @@ npm run package:portable
 - Mention the tested platform and commands you ran.
 - Keep public-facing text in English unless the change is specifically for localization.
 - Update Chinese and English i18n strings together when adding or changing UI text.
+- Use the pull request checklist to record `npm run check`, `cargo test --manifest-path src-tauri/Cargo.toml`, and `npm run package:portable` when relevant.
+- Redact logs, OCR debug images, screenshots, and sample data before sharing them publicly.
 
 ## Issue Guidelines
 
