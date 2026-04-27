@@ -1,0 +1,174 @@
+name: Nightly
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 18 * * *" # UTC 18:00 = Beijing 02:00
+  push:
+    branches:
+      - nightly
+
+concurrency:
+  group: nightly
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  NODE_VERSION: "24"
+
+jobs:
+  prepare:
+    name: Prepare version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      sha: ${{ steps.version.outputs.sha }}
+      skip: ${{ steps.version.outputs.skip }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute nightly version
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          SHA=$(git rev-parse HEAD)
+          PREV_SHA=$(gh release view nightly --json targetCommitish --jq '.targetCommitish' 2>/dev/null || echo "")
+          if [ -n "$PREV_SHA" ] && [ "$PREV_SHA" = "$SHA" ]; then
+            echo "No new commits since last nightly ($PREV_SHA), skipping build."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
+            echo "version=" >> "$GITHUB_OUTPUT"
+            echo "tag=nightly" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          BASE_VERSION=$(node -p "require('./package.json').version")
+          DATE=$(date -u +%Y%m%d)
+          VERSION="${BASE_VERSION}-nightly.${DATE}"
+
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=nightly" >> "$GITHUB_OUTPUT"
+          echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
+          echo "Nightly version: ${VERSION}"
+
+  build-windows-portable:
+    name: Build Windows portable nightly
+    needs: [prepare]
+    if: ${{ always() && !failure() && !cancelled() && needs.prepare.outputs.skip != 'true' }}
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            build/target
+          key: nightly-windows-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            nightly-windows-cargo-
+            windows-cargo-
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check frontend
+        run: npm run check
+
+      - name: Test Rust backend
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
+      - name: Build portable package
+        shell: pwsh
+        run: powershell -ExecutionPolicy Bypass -File scripts/package-portable.ps1 -Version "${{ needs.prepare.outputs.version }}"
+
+      - name: Verify portable package
+        shell: pwsh
+        run: |
+          $version = "${{ needs.prepare.outputs.version }}"
+          $packageDir = "build/portable/avalon-atlas-v$version-portable"
+          $zipPath = "build/portable/avalon-atlas-v$version-portable.zip"
+
+          $requiredPaths = @(
+            "$packageDir/avalon-atlas.exe",
+            "$packageDir/config.json",
+            "$packageDir/static/data/maps.json",
+            "$packageDir/static/maps",
+            "$packageDir/static/assets",
+            "$packageDir/binaries/tesseract",
+            "$packageDir/binaries/tessdata/eng.traineddata",
+            "$packageDir/logs",
+            "$zipPath"
+          )
+
+          foreach ($path in $requiredPaths) {
+            if (-not (Test-Path $path)) {
+              Write-Error "Missing nightly package file: $path"
+              exit 1
+            }
+          }
+
+          $mapCount = (Get-ChildItem "$packageDir/static/maps" -Filter *.webp).Count
+          if ($mapCount -lt 400) {
+            Write-Error "Expected at least 400 map webp files, found $mapCount"
+            exit 1
+          }
+
+      - name: Upload nightly artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: avalon-atlas-v${{ needs.prepare.outputs.version }}-portable
+          path: |
+            build/portable/avalon-atlas-v${{ needs.prepare.outputs.version }}-portable/
+            build/portable/avalon-atlas-v${{ needs.prepare.outputs.version }}-portable.zip
+          retention-days: 14
+
+  release:
+    name: Update nightly release
+    needs: [prepare, build-windows-portable]
+    if: ${{ always() && !failure() && !cancelled() && needs.prepare.outputs.skip != 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download nightly artifact
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: avalon-atlas-v${{ needs.prepare.outputs.version }}-portable
+          merge-multiple: true
+
+      - name: Generate checksums
+        run: cd artifacts && sha256sum *.zip > SHA256SUMS.txt
+
+      - name: Update nightly release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete nightly -y --cleanup-tag 2>/dev/null || true
+          gh release create nightly --prerelease \
+            --target ${{ needs.prepare.outputs.sha }} \
+            --title "Avalon Atlas ${{ needs.prepare.outputs.version }}" \
+            --notes "Nightly build from \`${{ github.ref_name }}\`.
+          Commit: ${{ needs.prepare.outputs.sha }}
+          Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            artifacts/*
