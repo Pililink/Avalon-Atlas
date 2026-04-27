@@ -1,5 +1,14 @@
 blank_issues_enabled: false
 contact_links:
-  - name: Download latest release
+  - name: Documentation / 文档
+    url: https://github.com/Pililink/Avalon-Atlas#readme
+    about: Read usage, development, and release documentation before opening an issue.
+  - name: Discussions / 讨论
+    url: https://github.com/Pililink/Avalon-Atlas/discussions
+    about: Ask questions, share usage notes, or discuss ideas that are not confirmed bugs.
+  - name: Download latest release / 下载最新版
     url: https://github.com/Pililink/Avalon-Atlas/releases
     about: Download the latest portable Windows package.
+  - name: Security Advisory / 安全问题
+    url: https://github.com/Pililink/Avalon-Atlas/security/advisories/new
+    about: Report security issues privately instead of opening a public issue.
