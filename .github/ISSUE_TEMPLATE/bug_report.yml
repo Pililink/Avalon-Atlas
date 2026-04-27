@@ -11,7 +11,7 @@ body:
     id: version
     attributes:
       label: Avalon Atlas version
-      description: Example: v2.0.0
+      description: "Example: v2.0.0"
       placeholder: v2.0.0
     validations:
       required: true
